@@ -25,6 +25,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.cardview.widget.CardView;
 import main.java.com.custom.launcher.service.MediaListenerService;
 import main.java.com.custom.launcher.service.VehicleDataService;
+import main.java.com.custom.launcher.util.LogUtils;
 
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = "CustomLauncher";
@@ -54,17 +55,22 @@ public class MainActivity extends AppCompatActivity {
     private final Runnable retryRunnable = new Runnable() {
         @Override
         public void run() {
-            Log.d(TAG, "[RETRY] Retrying vehicle service connection...");
             if (vehicleDataService != null && !vehicleDataService.isConnected()) {
+                Log.i(TAG, "[RETRY] Retrying vehicle service connection (attempt at " +
+                        new SimpleDateFormat("HH:mm:ss", Locale.UK).format(new Date()) + ")");
                 try {
                     vehicleDataService.bind();
                 } catch (Exception e) {
-                    Log.e(TAG, "[RETRY] Exception during retry: " + e.getMessage(), e);
+                    LogUtils.logError(TAG, "[RETRY] ✗ Exception during retry", e);
                 }
+            } else if (vehicleDataService != null && vehicleDataService.isConnected()) {
+                Log.i(TAG, "[RETRY] Service is now connected, stopping retry loop");
+                return; // Don't schedule another retry
             }
-            // Always schedule next retry
+            // Always schedule next retry if not connected
             retryHandler.removeCallbacks(this);
             retryHandler.postDelayed(this, RETRY_INTERVAL_MS);
+            Log.d(TAG, "[RETRY] Next retry scheduled in " + (RETRY_INTERVAL_MS / 1000) + " seconds");
         }
     };
 
@@ -84,13 +90,46 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        // Initialize logging FIRST to ensure all log levels are enabled
+        LogUtils.initializeLogging();
+
         setContentView(R.layout.activity_main);
+
+        // Log display metrics immediately on startup
+        logDisplayMetrics();
 
         initializeViews();
         checkNotificationListenerPermission();
         setupVehicleService();
         setupMediaService();
         startTimeUpdates();
+    }
+
+    /**
+     * Log display metrics for debugging
+     */
+    private void logDisplayMetrics() {
+        try {
+            android.util.DisplayMetrics displayMetrics = new android.util.DisplayMetrics();
+            getWindowManager().getDefaultDisplay().getMetrics(displayMetrics);
+            int dpi = displayMetrics.densityDpi;
+            int width = displayMetrics.widthPixels;
+            int height = displayMetrics.heightPixels;
+            float density = displayMetrics.density;
+            int widthDp = (int) (width / density);
+            int heightDp = (int) (height / density);
+
+            Log.i(TAG, "=================================================");
+            Log.i(TAG, "DISPLAY METRICS:");
+            Log.i(TAG, "  Resolution: " + width + "x" + height + " pixels");
+            Log.i(TAG, "  DPI: " + dpi);
+            Log.i(TAG, "  Density: " + density);
+            Log.i(TAG, "  Size in DP: " + widthDp + "x" + heightDp + " dp");
+            Log.i(TAG, "=================================================");
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to log display metrics: " + e.getMessage());
+        }
     }
 
     private void initializeViews() {
@@ -700,184 +739,113 @@ public class MainActivity extends AppCompatActivity {
     private void startLogReader(TextView logView, android.widget.ScrollView scrollView) {
         debugHandler = new Handler(Looper.getMainLooper());
 
-        android.util.DisplayMetrics displayMetrics = getResources().getDisplayMetrics();
-        int dpi = displayMetrics.densityDpi;
-        int width = displayMetrics.widthPixels;
-        int height = displayMetrics.heightPixels;
-        Log.d(TAG, "#######");
-        Log.d(TAG, "Screen DPI: " + dpi + ", Resolution: " + width + "x" + height);
-        Log.d(TAG, "#######");
+        // Log display metrics again when debug dialog opens
+        logDisplayMetrics();
 
-        logReaderRunnable = new Runnable() {
-            private Process logcatProcess = null;
-            private java.io.BufferedReader reader = null;
-            private StringBuilder logBuffer = new StringBuilder();
-            private int maxLines = 50; // Only show last 50 lines after initial load
-            private String lastLogText = "";
-            private boolean initialLoaded = false;
-            private String lastInitialLine = null;
-
-            private void loadInitialLogs() {
-                try {
-                    logBuffer = new StringBuilder();
-                    Process initialLogcat;
-                    if (showingSaicLogs) {
-                        initialLogcat = Runtime.getRuntime().exec(new String[] {
-                                "logcat", "-d", "-v", "time", "-t", "50",
-                                "-s",
-                                "SaicLoader:V",
-                                "com.saicmotor.hmi.launcher:V",
-                                "VehicleStatusManager:V",
-                                "ChargingViewModel:V",
-                                "AndroidRuntime:E"
-                        });
-                    } else {
-                        initialLogcat = Runtime.getRuntime().exec(new String[] {
-                                "logcat", "-d", "-v", "time", "-t", "50",
-                                "-s",
-                                TAG + ":V",
-                                "VehicleDataService:V",
-                                "MediaListenerService:V",
-                                "AndroidRuntime:E"
-                        });
-                    }
-                    java.io.BufferedReader initialReader = new java.io.BufferedReader(
-                            new java.io.InputStreamReader(initialLogcat.getInputStream()));
-                    String line;
-                    String lastLine = null;
-                    while ((line = initialReader.readLine()) != null) {
-                        logBuffer.append(line).append("\n");
-                        lastLine = line;
-                    }
-                    lastInitialLine = lastLine; // Remember the last line loaded initially
-                    initialReader.close();
-                    initialLogcat.destroy();
-                } catch (Exception e) {
-                    logBuffer = new StringBuilder();
-                    logBuffer.append("Error loading logs: ").append(e.getMessage()).append("\n");
-                    lastInitialLine = null;
+        // Start background thread for log reading
+        new Thread(() -> {
+            try {
+                // Load initial logs
+                StringBuilder logBuffer = new StringBuilder();
+                Process initialLogcat;
+                if (showingSaicLogs) {
+                    initialLogcat = Runtime.getRuntime().exec(new String[] {
+                            "logcat", "-d", "-v", "time", "-t", "100",
+                            "-s",
+                            "SaicLoader:V",
+                            "com.saicmotor.hmi.launcher:V",
+                            "VehicleStatusManager:V",
+                            "ChargingViewModel:V",
+                            "AndroidRuntime:E"
+                    });
+                } else {
+                    initialLogcat = Runtime.getRuntime().exec(new String[] {
+                            "logcat", "-d", "-v", "time", "-t", "100",
+                            "-s",
+                            TAG + ":V",
+                            "VehicleDataService:V",
+                            "MediaListenerService:V",
+                            "SaicMediaService:V",
+                            "AndroidRuntime:E"
+                    });
                 }
-            }
+                java.io.BufferedReader initialReader = new java.io.BufferedReader(
+                        new java.io.InputStreamReader(initialLogcat.getInputStream()));
+                String line;
+                while ((line = initialReader.readLine()) != null) {
+                    logBuffer.append(line).append("\n");
+                }
+                initialReader.close();
+                initialLogcat.destroy();
 
-            @Override
-            public void run() {
-                try {
-                    if (!initialLoaded) {
-                        loadInitialLogs();
-                        initialLoaded = true;
-                    }
+                // Update UI with initial logs
+                String initialText = logBuffer.toString();
+                runOnUiThread(() -> logView.setText(initialText));
 
-                    if (logcatProcess == null) {
-                        // Start logcat process for live tailing
-                        if (showingSaicLogs) {
-                            logcatProcess = Runtime.getRuntime().exec(new String[] {
-                                    "logcat",
-                                    "-v", "time",
-                                    "-s",
-                                    "SaicLoader:V",
-                                    "com.saicmotor.hmi.launcher:V",
-                                    "VehicleStatusManager:V",
-                                    "ChargingViewModel:V",
-                                    "AndroidRuntime:E"
-                            });
-                        } else {
-                            logcatProcess = Runtime.getRuntime().exec(new String[] {
-                                    "logcat",
-                                    "-v", "time",
-                                    "-s",
-                                    TAG + ":V",
-                                    "VehicleDataService:V",
-                                    "MediaListenerService:V",
-                                    "AndroidRuntime:E"
-                            });
-                        }
-                        reader = new java.io.BufferedReader(
-                                new java.io.InputStreamReader(logcatProcess.getInputStream()));
-                    }
+                // Start tailing from current time
+                String timestamp = new java.text.SimpleDateFormat("MM-dd HH:mm:ss.SSS", java.util.Locale.US)
+                        .format(new java.util.Date());
 
-                    // Read available new lines, but skip any lines that were already loaded in
-                    // initial
-                    String line;
-                    boolean foundLastInitial = (lastInitialLine == null);
-                    int linesRead = 0;
-                    boolean hasNewContent = false;
-                    while (reader.ready() && (line = reader.readLine()) != null && linesRead < 100) {
-                        if (!foundLastInitial) {
-                            if (line.equals(lastInitialLine)) {
-                                foundLastInitial = true;
-                            }
-                            continue;
-                        }
-                        logBuffer.append(line).append("\n");
-                        linesRead++;
-                        hasNewContent = true;
-                    }
+                Process tailProcess;
+                if (showingSaicLogs) {
+                    tailProcess = Runtime.getRuntime().exec(new String[] {
+                            "logcat",
+                            "-v", "time",
+                            "-T", timestamp,
+                            "-s",
+                            "SaicLoader:V",
+                            "com.saicmotor.hmi.launcher:V",
+                            "VehicleStatusManager:V",
+                            "ChargingViewModel:V",
+                            "AndroidRuntime:E"
+                    });
+                } else {
+                    tailProcess = Runtime.getRuntime().exec(new String[] {
+                            "logcat",
+                            "-v", "time",
+                            "-T", timestamp,
+                            "-s",
+                            TAG + ":V",
+                            "VehicleDataService:V",
+                            "MediaListenerService:V",
+                            "SaicMediaService:V",
+                            "AndroidRuntime:E"
+                    });
+                }
 
-                    // Keep only last maxLines (50)
+                java.io.BufferedReader reader = new java.io.BufferedReader(
+                        new java.io.InputStreamReader(tailProcess.getInputStream()));
+
+                Log.i(TAG, "Started logcat tail from time: " + timestamp);
+
+                // Blocking read loop in background thread
+                while ((line = reader.readLine()) != null) {
+                    logBuffer.append(line).append("\n");
+
+                    // Keep only last 500 lines
                     String[] lines = logBuffer.toString().split("\n");
-                    if (lines.length > maxLines) {
+                    if (lines.length > 500) {
                         logBuffer = new StringBuilder();
-                        for (int i = lines.length - maxLines; i < lines.length; i++) {
+                        for (int i = lines.length - 500; i < lines.length; i++) {
                             logBuffer.append(lines[i]).append("\n");
                         }
                     }
 
-                    // Update UI only if content changed
-                    String logText = logBuffer.toString();
-                    if (!logText.isEmpty() && !logText.equals(lastLogText)) {
-                        lastLogText = logText;
-                        logView.setText(logText);
-                    }
-
-                } catch (Exception e) {
-                    logView.setText("Error reading logs: " + e.getMessage() + "\n");
-                    Log.e(TAG, "Log reader error", e);
+                    // Update UI
+                    String finalText = logBuffer.toString();
+                    runOnUiThread(() -> {
+                        logView.setText(finalText);
+                        scrollView.post(() -> scrollView.fullScroll(android.view.View.FOCUS_DOWN));
+                    });
                 }
 
-                // Schedule next update
-                if (debugDialog != null && debugDialog.isShowing()) {
-                    debugHandler.postDelayed(this, 1000);
-                } else {
-                    // Clean up
-                    if (reader != null) {
-                        try {
-                            reader.close();
-                        } catch (Exception e) {
-                        }
-                    }
-                    if (logcatProcess != null) {
-                        logcatProcess.destroy();
-                    }
-                }
+                reader.close();
+                tailProcess.destroy();
+
+            } catch (Exception e) {
+                Log.e(TAG, "Log reader thread error: " + e.getMessage());
+                runOnUiThread(() -> logView.setText("Error reading logs: " + e.getMessage()));
             }
-
-            // Reset initialLoaded and reload logs when switching logs or reopening dialog
-            public void reset() {
-                initialLoaded = false;
-                lastInitialLine = null;
-                if (reader != null) {
-                    try {
-                        reader.close();
-                    } catch (Exception e) {
-                    }
-                }
-                if (logcatProcess != null) {
-                    logcatProcess.destroy();
-                }
-                reader = null;
-                logcatProcess = null;
-            }
-        };
-
-        // Always reset and reload logs on dialog open or log switch
-        if (logReaderRunnable instanceof Runnable) {
-            try {
-                java.lang.reflect.Method resetMethod = logReaderRunnable.getClass().getMethod("reset");
-                resetMethod.invoke(logReaderRunnable);
-            } catch (Exception ignored) {
-            }
-        }
-
-        debugHandler.post(logReaderRunnable);
+        }).start();
     }
 }

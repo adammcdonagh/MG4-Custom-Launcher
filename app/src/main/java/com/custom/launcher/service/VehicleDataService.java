@@ -1,12 +1,13 @@
 package com.custom.launcher.service;
 
-import android.content.Context;
+import javax.naming.Context;
 
 import android.content.ComponentName;
 import android.content.Intent;
 import android.content.ServiceConnection;
 import android.os.IBinder;
 import android.util.Log;
+import main.java.com.custom.launcher.util.LogUtils;
 
 /**
  * Service to connect to SAIC vehicle data services
@@ -23,6 +24,8 @@ public class VehicleDataService {
     private Context context;
     private VehicleDataListener listener;
     private boolean isBound = false;
+    private boolean bindAttempted = false;
+    private boolean usingMockData = false;
 
     // Vehicle data
     private int batteryLevel = 0;
@@ -45,24 +48,38 @@ public class VehicleDataService {
      * Bind to the SAIC vehicle service
      */
     public void bind() {
+        Log.i(TAG, "[BIND] Attempting to bind to vehicle service...");
+        bindAttempted = true;
+
+        // Unbind first if already bound (for retry scenarios)
+        if (isBound) {
+            Log.i(TAG, "[BIND] Already bound, unbinding first");
+            unbind();
+        }
+
         try {
             Intent intent = new Intent();
             intent.setPackage(VEHICLE_SERVICE_PACKAGE);
             intent.setAction(VEHICLE_SERVICE_ACTION);
 
             boolean success = context.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE);
-            Log.d(TAG, "Bind vehicle service: " + success);
+            Log.i(TAG, "[BIND] bindService() returned: " + success);
 
             if (!success) {
-                Log.w(TAG, "Failed to bind to vehicle service, using mock data");
+                Log.w(TAG, "[BIND] ✗ Failed to bind to vehicle service (service not found)");
+                usingMockData = true;
                 if (listener != null) {
                     listener.onConnectionStatusChanged(false);
                 }
                 // Use mock data when service binding fails
                 startMockDataUpdates();
+            } else {
+                Log.i(TAG, "[BIND] Waiting for onServiceConnected callback...");
+                // Don't call startMockDataUpdates here - wait for onServiceConnected
             }
         } catch (Exception e) {
-            Log.e(TAG, "Failed to bind vehicle service, using mock data", e);
+            LogUtils.logError(TAG, "[BIND] ✗ Exception while binding to vehicle service", e);
+            usingMockData = true;
             if (listener != null) {
                 listener.onConnectionStatusChanged(false);
             }
@@ -77,7 +94,7 @@ public class VehicleDataService {
                 context.unbindService(serviceConnection);
                 isBound = false;
             } catch (Exception e) {
-                Log.e(TAG, "Failed to unbind service", e);
+                LogUtils.logError(TAG, "Failed to unbind service", e);
             }
         }
     }
@@ -85,8 +102,9 @@ public class VehicleDataService {
     private ServiceConnection serviceConnection = new ServiceConnection() {
         @Override
         public void onServiceConnected(ComponentName name, IBinder service) {
-            Log.d(TAG, "Vehicle service connected: " + name);
+            Log.i(TAG, "[BIND] ✓ onServiceConnected: " + name);
             isBound = true;
+            usingMockData = false;
 
             if (listener != null) {
                 listener.onConnectionStatusChanged(true);
@@ -95,12 +113,13 @@ public class VehicleDataService {
             // TODO: Register for vehicle data callbacks
             // This would use AIDL interface from the SAIC vehicle service
             // For now, we'll use mock data
+            Log.i(TAG, "[BIND] Service connected but no AIDL interface available, using mock data");
             startMockDataUpdates();
         }
 
         @Override
         public void onServiceDisconnected(ComponentName name) {
-            Log.d(TAG, "Vehicle service disconnected");
+            Log.w(TAG, "[BIND] ✗ onServiceDisconnected: " + name);
             isBound = false;
 
             if (listener != null) {
@@ -134,5 +153,13 @@ public class VehicleDataService {
 
     public boolean isConnected() {
         return isBound;
+    }
+
+    public boolean isUsingMockData() {
+        return usingMockData;
+    }
+
+    public boolean hasAttemptedBind() {
+        return bindAttempted;
     }
 }

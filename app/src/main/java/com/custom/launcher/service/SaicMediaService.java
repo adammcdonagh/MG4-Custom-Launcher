@@ -9,6 +9,7 @@ import android.content.Intent;
 import android.content.ServiceConnection;
 import android.os.IBinder;
 import android.util.Log;
+import main.java.com.custom.launcher.util.LogUtils;
 
 /**
  * Service to monitor SAIC media service
@@ -88,7 +89,7 @@ public class SaicMediaService {
             Log.d(TAG, "Binding to MediaService: " + bound);
 
         } catch (Exception e) {
-            Log.e(TAG, "Failed to bind to MediaService", e);
+            LogUtils.logError(TAG, "Failed to bind to MediaService", e);
         }
     }
 
@@ -98,7 +99,7 @@ public class SaicMediaService {
                 context.unbindService(serviceConnection);
                 isBound = false;
             } catch (Exception e) {
-                Log.e(TAG, "Failed to unbind from MediaService", e);
+                LogUtils.logError(TAG, "Failed to unbind from MediaService", e);
             }
         }
     }
@@ -113,7 +114,7 @@ public class SaicMediaService {
             Log.d(TAG, "TODO: Register media callback");
 
         } catch (Exception e) {
-            Log.e(TAG, "Failed to register callback", e);
+            LogUtils.logError(TAG, "Failed to register callback", e);
         }
     }
 
@@ -134,7 +135,7 @@ public class SaicMediaService {
             Log.d(TAG, "Current media source: " + source);
 
         } catch (Exception e) {
-            Log.e(TAG, "Failed to get current media info", e);
+            LogUtils.logError(TAG, "Failed to get current media info", e);
         }
     }
 
@@ -149,7 +150,7 @@ public class SaicMediaService {
             Log.d(TAG, "TODO: Send play/pause command");
 
         } catch (Exception e) {
-            Log.e(TAG, "Failed to send play/pause command", e);
+            LogUtils.logError(TAG, "Failed to send play/pause command", e);
         }
     }
 
@@ -160,7 +161,7 @@ public class SaicMediaService {
         try {
             Log.d(TAG, "TODO: Send next command");
         } catch (Exception e) {
-            Log.e(TAG, "Failed to send next command", e);
+            LogUtils.logError(TAG, "Failed to send next command", e);
         }
     }
 
@@ -171,7 +172,7 @@ public class SaicMediaService {
         try {
             Log.d(TAG, "TODO: Send previous command");
         } catch (Exception e) {
-            Log.e(TAG, "Failed to send previous command", e);
+            LogUtils.logError(TAG, "Failed to send previous command", e);
         }
     }
 }

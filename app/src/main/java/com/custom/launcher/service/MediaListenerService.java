@@ -13,6 +13,7 @@ import android.media.session.PlaybackState;
 import android.net.Uri;
 import android.service.notification.NotificationListenerService;
 import android.util.Log;
+import main.java.com.custom.launcher.util.LogUtils;
 
 /**
  * Service to listen for media playback information
@@ -109,20 +110,73 @@ public class MediaListenerService extends NotificationListenerService {
             if (metadata != null) {
                 String title = metadata.getString(MediaMetadata.METADATA_KEY_TITLE);
                 String artist = metadata.getString(MediaMetadata.METADATA_KEY_ARTIST);
+
+                // Generate a unique track ID to detect track changes
+                String currentTrackId = title + "|" + artist;
+                boolean trackChanged = !currentTrackId.equals(lastTrackId);
+                if (trackChanged) {
+                    lastTrackId = currentTrackId;
+                    lastFailedArtUri = null; // Reset failed URI on track change
+                }
+
                 Bitmap albumArt = null;
 
                 // Try to get ART_URI or ALBUM_ART_URI first (R67 stock launcher method)
-                String artUriString = metadata.getString("android.media.metadata.ART_URI");
+                String artUriString = metadata.getString(MediaMetadata.METADATA_KEY_ART_URI);
                 if (artUriString == null) {
-                    artUriString = metadata.getString("android.media.metadata.ALBUM_ART_URI");
+                    artUriString = metadata.getString(MediaMetadata.METADATA_KEY_ALBUM_ART_URI);
                 }
-                if (artUriString != null) {
+
+                if (artUriString != null && !artUriString.equals(lastFailedArtUri)) {
                     try {
-                        Uri artUri = Uri.parse(artUriString);
-                        ContentResolver resolver = getContentResolver();
-                        albumArt = BitmapFactory.decodeStream(resolver.openInputStream(artUri));
+                        Uri artUri;
+
+                        // Check if it's a file path that needs conversion
+                        if (artUriString.startsWith("/")) {
+                            // Convert absolute file path to file:// URI
+                            artUri = Uri.parse("file://" + artUriString);
+                            Log.d(TAG, "Converted file path to URI: " + artUri);
+                        } else {
+                            artUri = Uri.parse(artUriString);
+                        }
+
+                        // Try multiple methods to load the bitmap
+                        try {
+                            // Method 1: ContentResolver (works for content:// URIs)
+                            ContentResolver resolver = getContentResolver();
+                            albumArt = BitmapFactory.decodeStream(resolver.openInputStream(artUri));
+                            Log.d(TAG, "✓ Loaded album art via ContentResolver");
+                        } catch (Exception e1) {
+                            Log.d(TAG, "ContentResolver failed, trying direct file access: " + e1.getMessage());
+
+                            try {
+                                // Method 2: Direct file path (for file:// URIs)
+                                if (artUriString.startsWith("/")) {
+                                    java.io.File file = new java.io.File(artUriString);
+                                    if (file.exists() && file.canRead()) {
+                                        albumArt = BitmapFactory.decodeFile(artUriString);
+                                        Log.d(TAG, "✓ Loaded album art via direct file access");
+                                    } else {
+                                        Log.w(TAG, "File doesn't exist or can't be read: " + artUriString);
+                                    }
+                                }
+                            } catch (Exception e2) {
+                                Log.w(TAG, "Direct file access also failed: " + e2.getMessage());
+                            }
+                        }
+
+                        if (albumArt == null) {
+                            // Only log once per URI to avoid spam
+                            if (trackChanged) {
+                                Log.w(TAG, "✗ Failed to load album art from URI after all attempts: " + artUriString);
+                            }
+                            lastFailedArtUri = artUriString;
+                        }
                     } catch (Exception e) {
-                        Log.w(TAG, "Failed to load album art from URI: " + artUriString, e);
+                        if (trackChanged) {
+                            LogUtils.logWarning(TAG, "✗ Exception loading album art from URI: " + artUriString, e);
+                        }
+                        lastFailedArtUri = artUriString;
                         albumArt = null;
                     }
                 }
@@ -130,9 +184,15 @@ public class MediaListenerService extends NotificationListenerService {
                 // Fallback to embedded bitmaps if URI loading fails
                 if (albumArt == null) {
                     albumArt = metadata.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART);
+                    if (albumArt != null) {
+                        Log.d(TAG, "✓ Using embedded METADATA_KEY_ALBUM_ART");
+                    }
                 }
                 if (albumArt == null) {
                     albumArt = metadata.getBitmap(MediaMetadata.METADATA_KEY_ART);
+                    if (albumArt != null) {
+                        Log.d(TAG, "✓ Using embedded METADATA_KEY_ART");
+                    }
                 }
 
                 boolean isPlaying = state != null &&
@@ -145,92 +205,17 @@ public class MediaListenerService extends NotificationListenerService {
                         albumArt);
             }
         } catch (Exception e) {
-            Log.e(TAG, "Failed to get media info", e);
+            LogUtils.logError(TAG, "Failed to get media info", e);
         }
     }
 
     @Override
-    public void onDestroy() {
-        try {
-            MediaMetadata metadata = activeController.getMetadata();
-            PlaybackState state = activeController.getPlaybackState();
+    public void onNotificationPosted(android.service.notification.StatusBarNotification sbn) {
+        // Not needed for media control - we use MediaSessionManager
+    }
 
-            if (metadata != null) {
-                String title = metadata.getString(MediaMetadata.METADATA_KEY_TITLE);
-                String artist = metadata.getString(MediaMetadata.METADATA_KEY_ARTIST);
-                Bitmap albumArt = null;
-
-                // Try to get ART_URI or ALBUM_ART_URI first (R67 stock launcher method)
-                String artUriString = metadata.getString("android.media.metadata.ART_URI");
-                if (artUriString == null) {
-                    artUriString = metadata.getString("android.media.metadata.ALBUM_ART_URI");
-                }
-
-                // Use a track ID to reset log suppression when track changes
-                String trackId = (title != null ? title : "") + "|" + (artist != null ? artist : "");
-                if (lastTrackId == null || !lastTrackId.equals(trackId)) {
-                    lastFailedArtUri = null;
-                    lastTrackId = trackId;
-                }
-
-                if (artUriString != null) {
-                    try {
-                        Uri artUri = Uri.parse(artUriString);
-                        ContentResolver resolver = getContentResolver();
-                        boolean loaded = false;
-                        if ("content".equals(artUri.getScheme())) {
-                            albumArt = BitmapFactory.decodeStream(resolver.openInputStream(artUri));
-                            loaded = (albumArt != null);
-                        } else if ("file".equals(artUri.getScheme()) || artUri.getScheme() == null) {
-                            // Handle file path or plain path
-                            java.io.File file = new java.io.File(artUri.getPath());
-                            if (file.exists() && file.canRead()) {
-                                albumArt = BitmapFactory.decodeFile(file.getAbsolutePath());
-                                loaded = (albumArt != null);
-                            } else {
-                                if (lastFailedArtUri == null || !lastFailedArtUri.equals(artUriString)) {
-                                    Log.w(TAG, "Album art file does not exist or is not readable: " + artUriString);
-                                    lastFailedArtUri = artUriString;
-                                }
-                            }
-                        } else {
-                            if (lastFailedArtUri == null || !lastFailedArtUri.equals(artUriString)) {
-                                Log.w(TAG, "Unsupported album art URI scheme: " + artUriString);
-                                lastFailedArtUri = artUriString;
-                            }
-                        }
-                        if (!loaded && (lastFailedArtUri == null || !lastFailedArtUri.equals(artUriString))) {
-                            Log.w(TAG, "Failed to load album art from URI: " + artUriString);
-                            lastFailedArtUri = artUriString;
-                        }
-                    } catch (Exception e) {
-                        if (lastFailedArtUri == null || !lastFailedArtUri.equals(artUriString)) {
-                            Log.w(TAG, "Failed to load album art from URI: " + artUriString + " " + e);
-                            lastFailedArtUri = artUriString;
-                        }
-                        albumArt = null;
-                    }
-                }
-
-                // Fallback to embedded bitmaps if URI loading fails
-                if (albumArt == null) {
-                    albumArt = metadata.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART);
-                }
-                if (albumArt == null) {
-                    albumArt = metadata.getBitmap(MediaMetadata.METADATA_KEY_ART);
-                }
-
-                boolean isPlaying = state != null &&
-                        state.getState() == PlaybackState.STATE_PLAYING;
-
-                listener.onMediaChanged(
-                        title != null ? title : "Unknown",
-                        artist != null ? artist : "Unknown Artist",
-                        isPlaying,
-                        albumArt);
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to get media info", e);
-        }
+    @Override
+    public void onNotificationRemoved(android.service.notification.StatusBarNotification sbn) {
+        // Not needed for media control - we use MediaSessionManager
     }
 }
