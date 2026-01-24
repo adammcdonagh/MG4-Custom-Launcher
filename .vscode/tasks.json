@@ -1,0 +1,29 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Build Android app (debug)",
+			"type": "shell",
+			"command": "./gradlew assembleDebug",
+			"group": "build"
+		},
+		{
+			"label": "Build Android app (debug)",
+			"type": "shell",
+			"command": "./gradlew assembleDebug",
+			"group": "build"
+		},
+		{
+			"label": "Build Android app (debug)",
+			"type": "shell",
+			"command": "./gradlew assembleDebug",
+			"group": "build"
+		},
+		{
+			"label": "Build Android app (debug)",
+			"type": "shell",
+			"command": "./gradlew assembleDebug",
+			"group": "build"
+		}
+	]
+}

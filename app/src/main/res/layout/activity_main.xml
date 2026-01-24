@@ -1,0 +1,455 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/background_dark"
+    android:padding="12dp">
+
+    <!-- Time Card -->
+    <androidx.cardview.widget.CardView
+        android:id="@+id/timeCard"
+        android:layout_width="380dp"
+        android:layout_height="180dp"
+        app:cardBackgroundColor="@color/card_background"
+        app:cardCornerRadius="20dp"
+        app:cardElevation="0dp"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:padding="20dp">
+
+            <TextView
+                android:id="@+id/timeText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="12:00"
+                android:textColor="@color/text_primary"
+                android:textSize="72sp"
+                android:fontFamily="sans-serif-light"
+                android:includeFontPadding="false"
+                android:layout_marginBottom="8dp" />
+
+            <TextView
+                android:id="@+id/dateText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Saturday, 24 January"
+                android:textColor="@color/text_secondary"
+                android:textSize="16sp"
+                android:fontFamily="sans-serif" />
+
+        </LinearLayout>
+
+    </androidx.cardview.widget.CardView>
+
+    <!-- Battery/Energy Card (Bottom Left) -->
+    <androidx.cardview.widget.CardView
+        android:id="@+id/batteryCard"
+        android:layout_width="380dp"
+        android:layout_height="0dp"
+        android:layout_marginTop="12dp"
+        app:cardBackgroundColor="@color/card_background"
+        app:cardCornerRadius="24dp"
+        app:cardElevation="0dp"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/timeCard"
+        app:layout_constraintBottom_toBottomOf="parent">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:padding="16dp"
+            android:gravity="center">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="BATTERY"
+                android:textColor="@color/text_secondary"
+                android:textSize="10sp"
+                android:fontFamily="sans-serif-medium"
+                android:letterSpacing="0.1"
+                android:layout_marginBottom="16dp" />
+
+            <!-- Horizontal Battery Indicator (60% Width) -->
+            <FrameLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp">
+
+                <FrameLayout
+                    android:layout_width="220dp"
+                    android:layout_height="60dp">
+
+                    <!-- Battery Outline -->
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:layout_marginEnd="10dp"
+                        android:background="@drawable/battery_outline" />
+
+                    <!-- Battery Fill Container -->
+                    <FrameLayout
+                        android:id="@+id/batteryFillContainer"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:layout_marginEnd="10dp"
+                        android:padding="6dp">
+
+                        <View
+                            android:id="@+id/batteryFill"
+                            android:layout_width="40dp"
+                            android:layout_height="match_parent"
+                            android:layout_gravity="start"
+                            android:background="@drawable/battery_fill" />
+
+                    </FrameLayout>
+
+                    <!-- Battery Cap (right side) -->
+                    <View
+                        android:layout_width="7dp"
+                        android:layout_height="28dp"
+                        android:layout_gravity="end|center_vertical"
+                        android:background="@drawable/battery_cap" />
+
+                </FrameLayout>
+
+            </FrameLayout>
+
+            <!-- Battery Info Below -->
+            <TextView
+                android:id="@+id/batteryText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="39%"
+                android:textColor="@color/text_primary"
+                android:textSize="32sp"
+                android:fontFamily="sans-serif-thin"
+                android:letterSpacing="-0.02"
+                android:layout_marginBottom="2dp" />
+
+            <TextView
+                android:id="@+id/rangeText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="85 miles"
+                android:textColor="@color/text_secondary"
+                android:textSize="13sp"
+                android:fontFamily="sans-serif" />
+
+        </LinearLayout>
+
+    </androidx.cardview.widget.CardView>
+
+    <!-- Music Card -->
+    <androidx.cardview.widget.CardView
+        android:id="@+id/musicCard"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        app:cardBackgroundColor="@color/card_background"
+        app:cardCornerRadius="20dp"
+        app:cardElevation="0dp"
+        app:layout_constraintStart_toEndOf="@id/timeCard"
+        app:layout_constraintEnd_toStartOf="@id/quickActionsCard"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        android:layout_marginStart="12dp"
+        android:layout_marginEnd="12dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:padding="20dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="NOW PLAYING"
+                android:textColor="@color/text_tertiary"
+                android:textSize="11sp"
+                android:letterSpacing="0.1"
+                android:fontFamily="sans-serif-medium"
+                android:layout_marginBottom="10dp" />
+
+            <!-- Album Art -->
+            <ImageView
+                android:id="@+id/albumArt"
+                android:layout_width="160dp"
+                android:layout_height="160dp"
+                android:src="@drawable/ic_music_placeholder"
+                android:scaleType="centerCrop"
+                android:background="@drawable/rounded_album_art"
+                android:clipToOutline="true"
+                android:layout_marginBottom="10dp" />
+
+            <!-- Song Info -->
+            <TextView
+                android:id="@+id/songTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Song Title"
+                android:textColor="@color/text_primary"
+                android:textSize="20sp"
+                android:fontFamily="sans-serif-medium"
+                android:maxLines="1"
+                android:ellipsize="end"
+                android:gravity="center"
+                android:layout_marginBottom="2dp" />
+
+            <TextView
+                android:id="@+id/artistName"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Artist Name"
+                android:textColor="@color/text_secondary"
+                android:textSize="14sp"
+                android:fontFamily="sans-serif"
+                android:maxLines="1"
+                android:ellipsize="end"
+                android:gravity="center"
+                android:layout_marginBottom="10dp" />
+
+            <!-- Progress Bar -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginBottom="10dp">
+
+                <SeekBar
+                    android:id="@+id/progressBar"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    style="@android:style/Widget.SeekBar"
+                    android:progressTint="@color/text_primary"
+                    android:progressBackgroundTint="#404040"
+                    android:thumbTint="@color/text_primary"
+                    android:splitTrack="false"
+                    android:minHeight="4dp"
+                    android:maxHeight="4dp"
+                    android:max="100"
+                    android:progress="0"
+                    android:layout_marginBottom="6dp" />
+
+                <!-- Time Labels -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/currentTime"
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:layout_height="wrap_content"
+                        android:text="0:00"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="14sp"
+                        android:fontFamily="sans-serif"
+                        android:gravity="start" />
+
+                    <TextView
+                        android:id="@+id/totalTime"
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:layout_height="wrap_content"
+                        android:text="-0:00"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="14sp"
+                        android:fontFamily="sans-serif"
+                        android:gravity="end" />
+
+                </LinearLayout>
+
+            </LinearLayout>
+
+            <!-- Playback Controls -->
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center">
+
+                <ImageButton
+                    android:id="@+id/prevButton"
+                    android:layout_width="66dp"
+                    android:layout_height="66dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:src="@drawable/ic_previous"
+                    android:tint="@color/text_primary"
+                    android:scaleType="fitCenter"
+                    android:padding="14dp"
+                    android:contentDescription="Previous" />
+
+                <Space
+                    android:layout_width="24dp"
+                    android:layout_height="wrap_content" />
+
+                <ImageButton
+                    android:id="@+id/playPauseButton"
+                    android:layout_width="75dp"
+                    android:layout_height="75dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:src="@drawable/ic_play"
+                    android:tint="@color/text_primary"
+                    android:scaleType="fitCenter"
+                    android:padding="12dp"
+                    android:contentDescription="Play/Pause" />
+
+                <Space
+                    android:layout_width="24dp"
+                    android:layout_height="wrap_content" />
+
+                <ImageButton
+                    android:id="@+id/nextButton"
+                    android:layout_width="66dp"
+                    android:layout_height="66dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:src="@drawable/ic_next"
+                    android:tint="@color/text_primary"
+                    android:scaleType="fitCenter"
+                    android:padding="14dp"
+                    android:contentDescription="Next" />
+
+            </LinearLayout>
+
+        </LinearLayout>
+
+    </androidx.cardview.widget.CardView>
+
+    <!-- Quick Actions Card -->
+    <androidx.cardview.widget.CardView
+        android:id="@+id/quickActionsCard"
+        android:layout_width="75dp"
+        android:layout_height="0dp"
+        app:cardBackgroundColor="@color/card_background"
+        app:cardCornerRadius="20dp"
+        app:cardElevation="0dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:padding="6dp">
+
+            <!-- CarPlay Button -->
+            <LinearLayout
+                android:id="@+id/carPlayButton"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:clickable="true"
+                android:focusable="true"
+                android:background="?attr/selectableItemBackground"
+                android:padding="8dp">
+
+                <ImageView
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:src="@drawable/ic_carplay"
+                    android:scaleType="fitCenter"
+                    android:layout_marginBottom="4dp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="CarPlay"
+                    android:textColor="@color/text_primary"
+                    android:textSize="12sp"
+                    android:fontFamily="sans-serif-medium" />
+
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="#30FFFFFF"
+                android:layout_marginVertical="8dp" />
+
+            <!-- HVAC Button -->
+            <LinearLayout
+                android:id="@+id/hvacButton"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:clickable="true"
+                android:focusable="true"
+                android:background="?attr/selectableItemBackground"
+                android:padding="8dp">
+
+                <ImageView
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:src="@drawable/ic_hvac"
+                    android:scaleType="fitCenter"
+                    android:layout_marginBottom="4dp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Climate"
+                    android:textColor="@color/text_primary"
+                    android:textSize="12sp"
+                    android:fontFamily="sans-serif-medium" />
+
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="#30FFFFFF"
+                android:layout_marginVertical="8dp" />
+
+            <!-- Launcher Button -->
+            <LinearLayout
+                android:id="@+id/launcherButton"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:clickable="true"
+                android:focusable="true"
+                android:background="?attr/selectableItemBackground"
+                android:padding="8dp">
+
+                <ImageView
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:src="@drawable/ic_launcher_saic"
+                    android:scaleType="fitCenter"
+                    android:layout_marginBottom="4dp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="MG4"
+                    android:textColor="@color/text_primary"
+                    android:textSize="12sp"
+                    android:fontFamily="sans-serif-medium" />
+
+            </LinearLayout>
+
+        </LinearLayout>
+
+    </androidx.cardview.widget.CardView>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

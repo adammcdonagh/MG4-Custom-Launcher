@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="colorPrimary">#000000</color>
+    <color name="colorPrimaryDark">#000000</color>
+    <color name="colorAccent">#30d158</color>
+
+    <color name="background_dark">#000000</color>
+    <color name="card_background">#1c1c1e</color>
+    <color name="card_background_elevated">#2c2c2e</color>
+    <color name="text_primary">#ffffff</color>
+    <color name="text_secondary">#8e8e93</color>
+    <color name="text_tertiary">#636366</color>
+    <color name="separator">#48484a</color>
+
+    <color name="battery_green">#30d158</color>
+    <color name="battery_yellow">#ffd60a</color>
+    <color name="battery_red">#ff453a</color>
+</resources>

@@ -1,0 +1,428 @@
+# IMPORTANT: Java Package Path and Source Root
+
+**Do NOT change the package declaration to `main.java.com.custom.launcher` or similar.**
+
+- The correct package for all app code is `com.custom.launcher` (and subpackages).
+- The source root is `app/src/main/java/`.
+- The directory structure under `java/` must be `com/custom/launcher/...`.
+- Do NOT add or expect a `main/java/com/custom/launcher` package or directory.
+- If you see errors about `main.java.com.custom.launcher`, it means the IDE or build system is misconfigured, not the code.
+
+**If you are an agent or developer, do NOT edit package declarations or move files to match a `main.java` prefix.**
+
+This note is to prevent repeated, unnecessary changes that break the build.
+
+# MG4 Custom Launcher Development - Agent Context
+
+## Project Overview
+
+Developing a custom Android launcher for MG4 electric vehicle to replace the stock SAIC launcher with a cleaner, more focused interface showing battery level, range, time/date, and media playback.
+
+## Work Completed
+
+### Phase 1: OTA Package Analysis
+
+- **Extracted APKs from multiple firmware versions:**
+  - R40 (1100 SWI69 R40): Original firmware with `EvCharge_eh32_ll.apk`
+  - R46 (1300 SWI68 R46): Intermediate version
+  - R67 (1300 SWI68 R67): Current firmware on user's car
+
+- **Tools Used:**
+  - `payload-dumper-go` - Extract payload.bin from OTA packages
+  - `7zip` - Extract ext4 filesystem images (system.img, vendor.img)
+  - `apktool` - Decompile APKs for analysis
+
+- **Key Findings:**
+  - EvCharge app with widgets exists in R40 only
+  - R46 and R67 removed the standalone EvCharge app
+  - Charging functionality integrated into launcher in R67
+  - Stock launcher: `launcher_eh32_eu_P.apk` (package: `com.saicmotor.hmi.launcher`)
+
+### Phase 2: Widget Analysis
+
+**EvCharge_eh32_ll.apk (R40 only):**
+
+- **Two widgets identified:**
+  1. `EVAppWidget2x1` - 2x1 rectangular battery widget (500x250dp)
+     - Shows: "Battery" title, battery icon, range (km), battery percentage
+     - Layout: `res/layout-w1778dp/ev_app_widget_2x1.xml`
+     - Config: `res/xml/ev_app_widget2x1_info.xml`
+     - Background: Color-coded (green/yellow/red)
+  2. `EVAppWidgetIcon1x1` - 1x1 compact icon (250x250dp)
+     - Layout: `res/layout-w1778dp/ev_app_widget_icon1x1.xml`
+     - Config: `res/xml/ev_app_widget_icon1x1_info.xml`
+
+### Phase 3: Vehicle Data Integration Research
+
+**R67 Launcher Analysis:**
+
+- Vehicle data accessed via: `com.saicmotor.telematics.VehicleService`
+- Key classes found in decompiled launcher:
+  - `VehicleStatusManager` - Manages vehicle state
+  - `VehicleChargingCallback` - Receives charging updates
+  - `ChargingViewModel` - Business logic
+  - `ChargingFragment` - UI display
+  - Layout: `fragment_energy_charging.xml` & `function_card_energy.xml`
+
+### Phase 4: Custom Launcher Development
+
+**Created Complete Android Project:**
+
+- Location: `CustomLauncher/` (current directory)
+- Package: `com.custom.launcher`
+- Target: Android 9+ (API 28+)
+
+**Project Structure:**
+
+```
+CustomLauncher/
+├── app/
+│   ├── build.gradle
+│   └── src/main/
+│       ├── AndroidManifest.xml
+│       ├── java/com/custom/launcher/
+│       │   ├── MainActivity.java
+│       │   └── service/
+│       │       ├── VehicleDataService.java
+│       │       └── MediaListenerService.java
+│       └── res/
+│           ├── layout/activity_main.xml
+│           ├── drawable/*.xml (icons)
+│           └── values/*.xml (colors, strings, styles)
+├── build.gradle
+├── settings.gradle
+└── README.md
+```
+
+**Features Implemented:**
+
+1. ✅ Battery & Range Display (color-coded card)
+2. ✅ Time & Date Widget (auto-updating)
+3. ✅ Now Playing Card (media info + controls)
+4. ✅ App Shortcuts Grid
+5. ✅ Vehicle Service Binding (with mock fallback)
+6. ✅ Media Session Integration
+7. ✅ Dark Theme UI
+8. ✅ Debug Dialog (triple-tap clock to view live logs)
+
+## Technical Details
+
+### Vehicle Service Integration
+
+```java
+// Correct service binding (extracted from R67 launcher decompiled code)
+VEHICLE_SERVICE_PACKAGE = "com.saicmotor.service.vehicle"
+VEHICLE_SERVICE_ACTION = "com.saicmotor.service.vehicle.VehicleService"
+
+// Key SDK classes used by launcher:
+// - com.saicmotor.sdk.vehiclesettings.manager.VehicleChargingManager
+// - Available methods:
+//   - getElectricityLevel()I - Battery level (SOC)
+//   - getCurrentEnduranceMileage()I - Current range in km
+//   - getVehicleChargingStatus() - Full charging bean
+```
+
+### Build Configuration
+
+- Gradle build system
+- Min SDK: 28 (Android 9)
+- Target SDK: 33
+- Dependencies: AndroidX, Material Design, ConstraintLayout, CardView
+
+### Key Files to Understand
+
+1. **MainActivity.java** - Main launcher logic, updates UI with vehicle/media data
+2. **VehicleDataService.java** - Binds to SAIC vehicle service for battery/range
+3. **MediaListenerService.java** - NotificationListenerService for media tracking
+4. **activity_main.xml** - Material Design layout with cards
+
+## Environment Setup
+
+### Required Tools
+
+- Java JDK 17: `brew install openjdk@17`
+- Android SDK tools: `brew install --cask android-commandlinetools`
+- Gradle (included in project)
+
+### Build Commands
+
+```bash
+# From the CustomLauncher directory
+./gradlew assembleDebug    # Build debug APK
+./gradlew assembleRelease  # Build release APK
+```
+
+### Emulator Testing
+
+```bash
+# Set correct display settings (160 dpi for MG4)
+adb shell wm density 160 && adb shell wm size 1920x1080
+
+# Install and launch
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+adb shell am start -n com.custom.launcher/.MainActivity
+
+# Check logs for errors
+adb logcat | grep -E "custom.launcher|AndroidRuntime"
+```
+
+### Deployment to Car
+
+```bash
+# Connect via ADB to car's Android system
+adb devices
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+
+# Set as default launcher
+# Settings → Apps → Default Apps → Home app → Custom Launcher
+```
+
+## Important Paths
+
+### Extracted Firmware Locations
+
+(Located in parent MG4 directory)
+
+- R40: `../1100 SWI69 R40 11950861 13.06.25/`
+- R46: `../1300 SWI68 R46/`
+- R67: `../1300 SWI68 R67/`
+
+### Extracted APKs
+
+(Located in parent MG4 directory)
+
+- R40: `../1100 SWI69 R40 11950861 13.06.25/extracted_apks/EvCharge_eh32_ll.apk` ✅ (has widgets)
+- R46: `../1300 SWI68 R46/extracted_apks/` ❌ (no EvCharge)
+- R67: `../1300 SWI68 R67/extracted_apks/launcher_eh32_eu_P.apk` (current system launcher)
+
+### Decompiled APKs
+
+(Located in parent MG4 directory)
+
+- EvCharge: `../1100 SWI69 R40 11950861 13.06.25/extracted_apks/EvCharge_eh32_ll/`
+- R67 Launcher: `../1300 SWI68 R67/extracted_apks/launcher_eh32_eu_P/`
+
+## Known Challenges
+
+1. **Vehicle Service Access**
+   - May require system-level permissions
+   - APK might need platform signature
+   - Consider installing as system app in `/system/priv-app/`
+
+2. **Testing Limitations**
+   - Cannot fully test vehicle data on Mac/emulator
+   - Mock data included for development
+   - Direct deployment to car recommended
+
+3. **Signature Requirements**
+   - System apps may need platform certificate
+   - May need to extract signing keys from car system
+
+## Next Steps
+
+### Immediate Tasks
+
+1. Build the project: `./gradlew assembleDebug`
+2. Enable ADB debugging on car
+3. Connect Mac to car via USB
+4. Install and test: `adb install -r app/build/outputs/apk/debug/app-debug.apk`
+
+### Future Enhancements
+
+- Add AIDL interface for vehicle service (if specifications available)
+- Implement actual media control commands
+- Add more customization options
+- Extract and use actual platform keys if system permissions needed
+- Consider creating widget version if launcher widgets are supported
+
+### If Vehicle Service Fails
+
+- Analyze logcat output: `adb logcat | grep VehicleData`
+- Check available services: `adb shell service list | grep vehicle`
+- May need to reverse engineer AIDL interface from stock launcher
+- Alternative: Monitor system broadcasts for battery/charging events
+
+## Display Specifications (Extracted from Firmware)
+
+**MG4 Infotainment Display:**
+
+- **Resolution**: 1920×1080 pixels (Full HD)
+- **Density**: 160 dpi (mdpi)
+- **Width**: 1778+ dp (layout-w1778dp qualifier found in R40 widgets)
+- **Orientation**: Landscape (forced)
+- **Aspect Ratio**: 16:9
+
+**Widget Dimensions (from EvCharge R40):**
+
+- 2×1 Battery Widget: 500×250 dp
+- 1×1 Icon Widget: 250×250 dp
+
+**Extracted from:**
+
+- `vendor/build.prop`: `ro.sf.lcd_density=160`
+- EvCharge layouts: `res/layout-w1778dp/`
+
+**Android Studio AVD Config:**
+
+- Resolution: 1920 × 1080 pixels
+- Density: 160 dpi (mdpi)
+- API Level: 28 (Android 9)
+- Orientation: Landscape
+
+## User's Car Details
+
+- Model: MG4 (1100 model, older version)
+- Current Firmware: R67 (1300 SWI68 R67)
+- Current Launcher: `com.saicmotor.hmi.launcher` (SaicLoader)
+- Has charging display showing battery % and range
+- No widget support in current firmware
+
+## Development Environment
+
+- Platform: macOS
+- Preferred IDE: VS Code (Android Studio for emulator testing)
+- Build Tool: Gradle command line
+- Testing: Android Automotive emulator + Direct deployment to vehicle via ADB
+- Android SDK: `/Users/adam/Library/Android/sdk`
+
+### Phase 7: Debug Dialog Feature ✅
+
+**Build completed**: 24 Jan 2026
+**APK Location**: `app/build/outputs/apk/debug/app-debug.apk`
+
+**Features Added:**
+
+1. ✅ Triple-tap clock to open debug dialog
+2. ✅ Live log viewer with auto-refresh (1 second intervals)
+3. ✅ Filters logs for custom launcher, vehicle service, and media service
+4. ✅ Clear logs button
+5. ✅ Auto-scrolls to show latest logs (only when new content arrives)
+6. ✅ Scrollable and selectable text
+7. ✅ Maximum 500 lines retained in buffer
+8. ✅ Wider dialog (1200px height) for better readability
+9. ✅ Auto-retry vehicle service binding every 10 seconds if connection fails
+
+**Implementation Details:**
+
+- **Activation**: Triple-tap the clock (time display) within 500ms between taps
+- **Log Filters**: Shows only relevant logs:
+  - `CustomLauncher:V` - Main launcher logs
+  - `VehicleDataService:V` - Vehicle service binding logs
+  - `MediaListenerService:V` - Media service logs
+  - `AndroidRuntime:E` - Critical errors
+- **Permission**: Added `android.permission.READ_LOGS`
+- **Log Command**: Uses `logcat -v time` with tag filtering
+- **Auto-refresh**: Updates every 1 second while dialog is open
+- **Memory**: Keeps last 500 lines to prevent memory issues
+
+**Usage on Car:**
+
+Since ADB is not available on the car, this debug dialog allows you to:
+
+1. See if vehicle service is connecting
+2. Check for any binding errors
+3. Monitor media service status
+4. View any runtime exceptions
+5. Clear logs to start fresh debugging session
+
+**Testing:**
+
+- ✅ Dialog opens on triple-tap
+- ✅ Logs display in real-time
+- ✅ Auto-scrolls to bottom
+- ✅ Clear button works
+- ✅ Close button stops log reader and cleans up resources
+
+## Build Status
+
+### Phase 7: Debug Dialog Feature ✅
+
+**Build completed**: 20 Jan 2026
+**APK Location**: `app/build/outputs/apk/debug/app-debug.apk` (11MB)
+**Build Issues Resolved:**
+
+1. ✅ Created Android SDK directory structure
+2. ✅ Installed platforms 33, 34 and build-tools
+3. ✅ Added `gradle.properties` with AndroidX support
+4. ✅ Updated compileSdk to 34 (required by Material Design 1.11.0)
+5. ✅ Fixed XML layout error (invalid `auto` margin)
+6. ✅ Corrected Java imports (Handler, ImageView, Context)
+
+**Emulator Testing:**
+
+- ✅ App launches successfully without crashes
+- ✅ UI renders correctly at 1920×1080 @ 160 dpi
+- ⚠️ Vehicle service binding fails gracefully (expected - uses mock data)
+- ⚠️ Media listener requires notification permissions
+
+### Phase 6: Battery Card Integration ✅
+
+**Build completed**: 24 Jan 2026
+**APK Location**: `app/build/outputs/apk/debug/app-debug.apk`
+
+**Features Added:**
+
+1. ✅ Battery card now opens Charge Management Activity
+2. ✅ Integrated with SAIC VehicleSettings app
+3. ✅ Fixed all import errors (Handler, ImageView, Context)
+
+**Implementation Details:**
+
+- **Target Package**: `com.saicmotor.hmi.vehiclesettings`
+- **Target Activity**: `com.saicmotor.hmi.vehiclesettings.chargemanagement.ui.ChargeManagementActivity`
+- **Click Handler**: Added `batteryCard.setOnClickListener()` to open the activity
+- **Intent Flags**: Uses `FLAG_ACTIVITY_NEW_TASK` for proper activity launch
+
+**Charge Management Activity Features:**
+
+The stock SAIC ChargeManagementActivity includes three tabs:
+
+1. **Charging Management** - Charge scheduling, SOC limits, charging lock
+2. **Discharging Management** - V2L (Vehicle-to-Load) settings
+3. **Energy** - Energy flow visualization
+
+**Code Changes:**
+
+```java
+// Added in MainActivity.java onCreate()
+batteryCard.setOnClickListener(v -> {
+    openChargeManagement();
+});
+
+// New method to launch SAIC Charge Management
+private void openChargeManagement() {
+    try {
+        Intent intent = new Intent();
+        intent.setComponent(new ComponentName(
+            "com.saicmotor.hmi.vehiclesettings",
+            "com.saicmotor.hmi.vehiclesettings.chargemanagement.ui.ChargeManagementActivity"
+        ));
+        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        startActivity(intent);
+        Log.d(TAG, "Opening Charge Management Activity");
+    } catch (Exception e) {
+        Log.e(TAG, "Failed to open Charge Management: " + e.getMessage());
+    }
+}
+```
+
+**Testing:**
+
+- ✅ App compiles successfully
+- ✅ APK installs on device
+- ✅ Launcher starts without errors
+- ⏳ Awaiting on-car testing to verify Charge Management opens correctly
+
+**Next Steps:**
+
+1. Test on actual MG4 vehicle
+2. Verify battery card click opens Charge Management Activity
+3. Confirm all three tabs are accessible in the opened activity
+4. Test back navigation returns to custom launcher
+
+## Resources
+
+- OTA extraction tools installed: `payload-dumper-go`, `p7zip`, `apktool`
+- All firmware packages available in workspace
+- Stock launcher decompiled and analyzed
+- Custom launcher built and tested on emulator
