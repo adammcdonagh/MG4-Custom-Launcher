@@ -1,12 +1,9 @@
 package com.custom.launcher;
 
+import java.io.File;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
-import java.util.logging.Handler;
-
-import javax.swing.text.View;
-import javax.swing.text.html.ImageView;
 
 import android.app.AlertDialog;
 import android.content.ComponentName;
@@ -14,18 +11,22 @@ import android.content.Intent;
 import android.media.session.MediaController;
 import android.media.session.PlaybackState;
 import android.os.Bundle;
+import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
 import android.text.TextUtils;
 import android.util.Log;
 import android.view.KeyEvent;
+import android.view.View;
 import android.widget.ImageButton;
+import android.widget.ImageView;
 import android.widget.TextView;
+import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.cardview.widget.CardView;
-import main.java.com.custom.launcher.service.MediaListenerService;
-import main.java.com.custom.launcher.service.VehicleDataService;
-import main.java.com.custom.launcher.util.LogUtils;
+import com.custom.launcher.service.MediaListenerService;
+import com.custom.launcher.service.VehicleDataService;
+import com.custom.launcher.util.LogUtils;
 
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = "CustomLauncher";
@@ -70,7 +71,7 @@ public class MainActivity extends AppCompatActivity {
             // Always schedule next retry if not connected
             retryHandler.removeCallbacks(this);
             retryHandler.postDelayed(this, RETRY_INTERVAL_MS);
-            Log.d(TAG, "[RETRY] Next retry scheduled in " + (RETRY_INTERVAL_MS / 1000) + " seconds");
+            Log.i(TAG, "[RETRY] Next retry scheduled in " + (RETRY_INTERVAL_MS / 1000) + " seconds");
         }
     };
 
@@ -100,10 +101,59 @@ public class MainActivity extends AppCompatActivity {
         logDisplayMetrics();
 
         initializeViews();
+        requestStoragePermissions();
         checkNotificationListenerPermission();
         setupVehicleService();
         setupMediaService();
         startTimeUpdates();
+    }
+
+    /**
+     * Request storage permissions for accessing Bluetooth album art
+     */
+    private void requestStoragePermissions() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            String[] permissions = {
+                    android.Manifest.permission.READ_EXTERNAL_STORAGE,
+                    android.Manifest.permission.WRITE_EXTERNAL_STORAGE
+            };
+
+            boolean needsPermission = false;
+            for (String permission : permissions) {
+                if (checkSelfPermission(permission) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                    needsPermission = true;
+                    Log.i(TAG, "Missing permission: " + permission);
+                }
+            }
+
+            if (needsPermission) {
+                Log.i(TAG, "Requesting storage permissions for Bluetooth album art access...");
+                requestPermissions(permissions, 1001);
+            } else {
+                Log.i(TAG, "✓ Storage permissions already granted");
+            }
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == 1001) {
+            boolean allGranted = true;
+            for (int i = 0; i < permissions.length; i++) {
+                if (grantResults[i] == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                    Log.i(TAG, "✓ Permission granted: " + permissions[i]);
+                } else {
+                    Log.w(TAG, "✗ Permission denied: " + permissions[i]);
+                    allGranted = false;
+                }
+            }
+            if (allGranted) {
+                Log.i(TAG, "✓ All storage permissions granted - album art should now work");
+            } else {
+                Log.w(TAG, "⚠ Some permissions denied - album art may not work for Bluetooth sources");
+            }
+        }
     }
 
     /**
@@ -173,87 +223,87 @@ public class MainActivity extends AppCompatActivity {
 
         // Setup quick action buttons
         findViewById(R.id.carPlayButton).setOnClickListener(v -> {
-            Log.d(TAG, "CarPlay button clicked!");
+            Log.i(TAG, "CarPlay button clicked!");
             openCarPlay();
         });
 
         findViewById(R.id.hvacButton).setOnClickListener(v -> {
-            Log.d(TAG, "HVAC button clicked!");
+            Log.i(TAG, "HVAC button clicked!");
             openHVAC();
         });
 
         findViewById(R.id.launcherButton).setOnClickListener(v -> {
-            Log.d(TAG, "Launcher button clicked!");
+            Log.i(TAG, "Launcher button clicked!");
             openOriginalLauncher();
         });
     }
 
     private void openChargeManagement() {
         try {
-            Log.d(TAG, "Attempting to open Charge Management Activity...");
+            Log.i(TAG, "Attempting to open Charge Management Activity...");
             Intent intent = new Intent();
             intent.setComponent(new ComponentName(
                     "com.saicmotor.hmi.vehiclesettings",
                     "com.saicmotor.hmi.vehiclesettings.chargemanagement.ui.ChargeManagementActivity"));
             intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             startActivity(intent);
-            Log.d(TAG, "✓ Successfully launched Charge Management Activity");
+            Log.i(TAG, "✓ Successfully launched Charge Management Activity");
         } catch (Exception e) {
             Log.e(TAG, "✗ Failed to open Charge Management (expected on emulator): " + e.getMessage());
-            Log.d(TAG, "This will work on the actual MG4 car where vehiclesettings app is installed");
+            Log.i(TAG, "This will work on the actual MG4 car where vehiclesettings app is installed");
         }
     }
 
     private void openCarPlay() {
         try {
-            Log.d(TAG, "Attempting to open CarPlay...");
+            Log.i(TAG, "Attempting to open CarPlay...");
             // Try to launch CarPlay service/app
             Intent intent = getPackageManager().getLaunchIntentForPackage("com.allgo.carplay.service");
             if (intent != null) {
                 intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 startActivity(intent);
-                Log.d(TAG, "✓ Successfully launched CarPlay");
+                Log.i(TAG, "✓ Successfully launched CarPlay");
             } else {
                 // Fallback: try broadcast intent
                 Intent broadcastIntent = new Intent("com.allgo.carplay");
                 sendBroadcast(broadcastIntent);
-                Log.d(TAG, "Sent CarPlay broadcast intent");
+                Log.i(TAG, "Sent CarPlay broadcast intent");
             }
         } catch (Exception e) {
             Log.e(TAG, "✗ Failed to open CarPlay (expected on emulator): " + e.getMessage());
-            Log.d(TAG, "This will work on the actual MG4 car where CarPlay is installed");
+            Log.i(TAG, "This will work on the actual MG4 car where CarPlay is installed");
         }
     }
 
     private void openHVAC() {
         try {
-            Log.d(TAG, "Attempting to open dedicated HVAC app...");
+            Log.i(TAG, "Attempting to open dedicated HVAC app...");
             Intent intent = new Intent();
             intent.setComponent(new ComponentName(
                     "com.saicmotor.hmi.hvac",
                     "com.saicmotor.hmi.hvac.HvacActivity"));
             intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             startActivity(intent);
-            Log.d(TAG, "✓ Successfully launched HVAC app");
+            Log.i(TAG, "✓ Successfully launched HVAC app");
         } catch (Exception e) {
             Log.e(TAG, "✗ Failed to open HVAC app: " + e.getMessage());
-            Log.d(TAG, "This will work on the actual MG4 car where the HVAC app is installed");
+            Log.i(TAG, "This will work on the actual MG4 car where the HVAC app is installed");
         }
     }
 
     private void openOriginalLauncher() {
         try {
-            Log.d(TAG, "Attempting to open original SAIC launcher...");
+            Log.i(TAG, "Attempting to open original SAIC launcher...");
             Intent intent = new Intent();
             intent.setComponent(new ComponentName(
                     "com.saicmotor.hmi.launcher",
                     "com.saicmotor.hmi.launcher.ui.MainActivity"));
             intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             startActivity(intent);
-            Log.d(TAG, "✓ Successfully launched original SAIC launcher");
+            Log.i(TAG, "✓ Successfully launched original SAIC launcher");
         } catch (Exception e) {
             Log.e(TAG, "✗ Failed to open original launcher (expected on emulator): " + e.getMessage());
-            Log.d(TAG, "This will work on the actual MG4 car where SAIC launcher is installed");
+            Log.i(TAG, "This will work on the actual MG4 car where SAIC launcher is installed");
         }
     }
 
@@ -315,7 +365,7 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onConnectionStatusChanged(boolean connected) {
                 if (connected) {
-                    Log.d(TAG, "[RETRY] Vehicle service connected successfully, stopping retry loop");
+                    Log.i(TAG, "[RETRY] Vehicle service connected successfully, stopping retry loop");
                     stopRetryLoop();
                 } else {
                     Log.w(TAG, "[RETRY] Vehicle service connection failed, will retry");
@@ -330,13 +380,13 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void startRetryLoop() {
-        Log.d(TAG, "[RETRY] Starting retry loop");
+        Log.i(TAG, "[RETRY] Starting retry loop");
         retryHandler.removeCallbacks(retryRunnable);
         retryHandler.postDelayed(retryRunnable, RETRY_INTERVAL_MS);
     }
 
     private void stopRetryLoop() {
-        Log.d(TAG, "[RETRY] Stopping retry loop");
+        Log.i(TAG, "[RETRY] Stopping retry loop");
         retryHandler.removeCallbacks(retryRunnable);
     }
 
@@ -376,25 +426,25 @@ public class MainActivity extends AppCompatActivity {
             activeMediaController = newController;
         }
 
-        Log.d(TAG, "updateActiveMediaController: " + activeMediaController);
+        // Log.i(TAG, "updateActiveMediaController: " + activeMediaController);
     }
 
     private void sendMediaButtonCommand(int keyCode) {
         // Get active controller from MediaListenerService
         updateActiveMediaController();
 
-        Log.d(TAG, "sendMediaButtonCommand: keyCode=" + keyCode + ", controller=" + activeMediaController);
+        Log.i(TAG, "sendMediaButtonCommand: keyCode=" + keyCode + ", controller=" + activeMediaController);
 
         if (activeMediaController != null) {
             // Use MediaController transport controls
             MediaController.TransportControls controls = activeMediaController.getTransportControls();
             PlaybackState state = activeMediaController.getPlaybackState();
 
-            Log.d(TAG, "Current playback state: " + (state != null ? state.getState() : "null"));
+            Log.i(TAG, "Current playback state: " + (state != null ? state.getState() : "null"));
 
             switch (keyCode) {
                 case KeyEvent.KEYCODE_MEDIA_PREVIOUS:
-                    Log.d(TAG, "Sending skipToPrevious");
+                    Log.i(TAG, "Sending skipToPrevious");
                     controls.skipToPrevious();
                     break;
                 case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
@@ -404,16 +454,16 @@ public class MainActivity extends AppCompatActivity {
                                     state.getState() == PlaybackState.STATE_BUFFERING);
 
                     if (shouldPause) {
-                        Log.d(TAG, "Currently playing, sending pause");
+                        Log.i(TAG, "Currently playing, sending pause");
                         controls.pause();
                         lastCommandWasPlay = false;
                         isMediaPlaying = false;
                     } else {
-                        Log.d(TAG, "Currently stopped/paused, checking if we should resume or play");
+                        Log.i(TAG, "Currently stopped/paused, checking if we should resume or play");
                         // If state is stopped (1), it might have lost context
                         // Try to use the last playing state to resume
                         if (state != null && state.getState() == PlaybackState.STATE_STOPPED) {
-                            Log.d(TAG, "State is STOPPED - Radio FM lost context, play will start default");
+                            Log.i(TAG, "State is STOPPED - Radio FM lost context, play will start default");
                         }
                         controls.play();
                         lastCommandWasPlay = true;
@@ -422,7 +472,7 @@ public class MainActivity extends AppCompatActivity {
                     updatePlayPauseButton();
                     break;
                 case KeyEvent.KEYCODE_MEDIA_NEXT:
-                    Log.d(TAG, "Sending skipToNext");
+                    Log.i(TAG, "Sending skipToNext");
                     controls.skipToNext();
                     break;
             }
@@ -659,17 +709,32 @@ public class MainActivity extends AppCompatActivity {
         android.widget.ScrollView scrollView = new android.widget.ScrollView(this);
         scrollView.addView(logView);
 
-        // Add a button to scroll to bottom
+        // Add buttons for scrolling and saving
+        android.widget.LinearLayout buttonRow = new android.widget.LinearLayout(this);
+        buttonRow.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+        buttonRow.setPadding(10, 10, 10, 10);
+
         android.widget.Button scrollToBottomButton = new android.widget.Button(this);
         scrollToBottomButton.setText("Scroll to Bottom");
         scrollToBottomButton.setOnClickListener(v -> scrollView.post(() -> scrollView.fullScroll(View.FOCUS_DOWN)));
 
-        // Use a vertical LinearLayout to hold the ScrollView and button
+        android.widget.Button saveToUsbButton = new android.widget.Button(this);
+        saveToUsbButton.setText("Save to USB");
+        saveToUsbButton.setOnClickListener(v -> saveLogsToUsb(logView.getText().toString()));
+
+        // Equal width for both buttons
+        android.widget.LinearLayout.LayoutParams buttonParams = new android.widget.LinearLayout.LayoutParams(
+                0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        buttonParams.setMargins(5, 0, 5, 0);
+        buttonRow.addView(scrollToBottomButton, buttonParams);
+        buttonRow.addView(saveToUsbButton, buttonParams);
+
+        // Use a vertical LinearLayout to hold the ScrollView and buttons
         android.widget.LinearLayout container = new android.widget.LinearLayout(this);
         container.setOrientation(android.widget.LinearLayout.VERTICAL);
         container.addView(scrollView, new android.widget.LinearLayout.LayoutParams(
                 android.widget.LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
-        container.addView(scrollToBottomButton, new android.widget.LinearLayout.LayoutParams(
+        container.addView(buttonRow, new android.widget.LinearLayout.LayoutParams(
                 android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
                 android.widget.LinearLayout.LayoutParams.WRAP_CONTENT));
 
@@ -731,6 +796,88 @@ public class MainActivity extends AppCompatActivity {
 
         // Start log reader
         startLogReader(logView, scrollView);
+    }
+
+    /**
+     * Save logs to USB drive
+     */
+    private void saveLogsToUsb(String logs) {
+        new Thread(() -> {
+            try {
+                // Common USB mount points on Android
+                String[] usbPaths = {
+                        "/storage/udisk0",
+                        "/storage/usbotg",
+                        "/mnt/usb_storage",
+                        "/mnt/media_rw/USB_DISK",
+                        "/mnt/usb",
+                        "/storage/usbdisk",
+                        "/mnt/usbhost"
+                };
+
+                File usbDir = null;
+                for (String path : usbPaths) {
+                    File dir = new File(path);
+                    if (dir.exists() && dir.canWrite()) {
+                        usbDir = dir;
+                        Log.i(TAG, "Found writable USB at: " + path);
+                        break;
+                    }
+                }
+
+                if (usbDir == null) {
+                    // Try to find any mounted USB storage
+                    File storageRoot = new File("/storage");
+                    if (storageRoot.exists()) {
+                        File[] storageFiles = storageRoot.listFiles();
+                        if (storageFiles != null) {
+                            for (File f : storageFiles) {
+                                if (f.isDirectory() && !f.getName().equals("emulated") &&
+                                        !f.getName().equals("self") && f.canWrite()) {
+                                    usbDir = f;
+                                    Log.i(TAG, "Found writable storage at: " + f.getAbsolutePath());
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (usbDir == null) {
+                    runOnUiThread(() -> {
+                        Toast.makeText(this, "No writable USB drive found", Toast.LENGTH_LONG).show();
+                    });
+                    Log.w(TAG, "No USB drive found. Checked paths and /storage directory.");
+                    return;
+                }
+
+                // Create filename with timestamp
+                String timestamp = new java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US)
+                        .format(new java.util.Date());
+                String filename = "CustomLauncher_" + timestamp + ".log";
+                File logFile = new File(usbDir, filename);
+
+                // Write logs to file
+                java.io.FileWriter writer = new java.io.FileWriter(logFile);
+                writer.write("Custom Launcher Debug Logs\n");
+                writer.write("Generated: " + timestamp + "\n");
+                writer.write("=================================\n\n");
+                writer.write(logs);
+                writer.close();
+
+                final String savedPath = logFile.getAbsolutePath();
+                runOnUiThread(() -> {
+                    Toast.makeText(this, "Logs saved to: " + savedPath, Toast.LENGTH_LONG).show();
+                });
+                Log.i(TAG, "Logs saved successfully to: " + savedPath);
+
+            } catch (Exception e) {
+                runOnUiThread(() -> {
+                    Toast.makeText(this, "Failed to save logs: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                });
+                Log.e(TAG, "Failed to save logs to USB", e);
+            }
+        }).start();
     }
 
     /**

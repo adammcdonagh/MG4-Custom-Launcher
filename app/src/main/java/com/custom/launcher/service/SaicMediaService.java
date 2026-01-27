@@ -2,14 +2,13 @@ package com.custom.launcher.service;
 
 import java.lang.reflect.Method;
 
-import javax.naming.Context;
-
 import android.content.ComponentName;
+import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
 import android.os.IBinder;
 import android.util.Log;
-import main.java.com.custom.launcher.util.LogUtils;
+import com.custom.launcher.util.LogUtils;
 
 /**
  * Service to monitor SAIC media service
@@ -44,7 +43,7 @@ public class SaicMediaService {
     private ServiceConnection serviceConnection = new ServiceConnection() {
         @Override
         public void onServiceConnected(ComponentName name, IBinder service) {
-            Log.d(TAG, "MediaService connected");
+            Log.i(TAG, "MediaService connected");
             mediaServiceBinder = service;
             isBound = true;
 
@@ -67,7 +66,7 @@ public class SaicMediaService {
 
         @Override
         public void onServiceDisconnected(ComponentName name) {
-            Log.d(TAG, "MediaService disconnected");
+            Log.i(TAG, "MediaService disconnected");
             mediaServiceBinder = null;
             mediaServiceProxy = null;
             isBound = false;
@@ -86,7 +85,7 @@ public class SaicMediaService {
             intent.setAction(ACTION_PLAY_STATUS);
 
             boolean bound = context.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE);
-            Log.d(TAG, "Binding to MediaService: " + bound);
+            Log.i(TAG, "Binding to MediaService: " + bound);
 
         } catch (Exception e) {
             LogUtils.logError(TAG, "Failed to bind to MediaService", e);
@@ -111,7 +110,7 @@ public class SaicMediaService {
         try {
             // TODO: Implement callback registration using reflection
             // This would require implementing the AIDL callback interface
-            Log.d(TAG, "TODO: Register media callback");
+            Log.i(TAG, "TODO: Register media callback");
 
         } catch (Exception e) {
             LogUtils.logError(TAG, "Failed to register callback", e);
@@ -132,7 +131,7 @@ public class SaicMediaService {
                 listener.onMediaSourceChanged(source);
             }
 
-            Log.d(TAG, "Current media source: " + source);
+            Log.i(TAG, "Current media source: " + source);
 
         } catch (Exception e) {
             LogUtils.logError(TAG, "Failed to get current media info", e);
@@ -147,7 +146,7 @@ public class SaicMediaService {
             // Use reflection to call play/pause methods
             Class<?> proxyClass = mediaServiceProxy.getClass();
             // Note: Actual method signatures would need to be determined from the AIDL
-            Log.d(TAG, "TODO: Send play/pause command");
+            Log.i(TAG, "TODO: Send play/pause command");
 
         } catch (Exception e) {
             LogUtils.logError(TAG, "Failed to send play/pause command", e);
@@ -159,7 +158,7 @@ public class SaicMediaService {
             return;
 
         try {
-            Log.d(TAG, "TODO: Send next command");
+            Log.i(TAG, "TODO: Send next command");
         } catch (Exception e) {
             LogUtils.logError(TAG, "Failed to send next command", e);
         }
@@ -170,7 +169,7 @@ public class SaicMediaService {
             return;
 
         try {
-            Log.d(TAG, "TODO: Send previous command");
+            Log.i(TAG, "TODO: Send previous command");
         } catch (Exception e) {
             LogUtils.logError(TAG, "Failed to send previous command", e);
         }

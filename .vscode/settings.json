@@ -1,0 +1,17 @@
+{
+  "java.completion.favoriteStaticMembers": [],
+  "java.completion.importOrder": [
+    "android",
+    "androidx",
+    "com",
+    "java",
+    "javax",
+    ""
+  ],
+  "java.saveActions.organizeImports": false,
+  "editor.codeActionsOnSave": {
+    "source.organizeImports": "never"
+  },
+  "java.autobuild.enabled": true,
+  "java.configuration.updateBuildConfiguration": "automatic"
+}
