@@ -107,20 +107,182 @@ CustomLauncher/
 
 ## Technical Details
 
-### Vehicle Service Integration
+### Vehicle Service Integration ✅ WORKING
+
+**CRITICAL DISCOVERY**: SAIC SDK classes are NOT in the system classloader - they are packaged in the stock launcher APK.
+
+**Working Implementation** (tested on car 28 Jan 2026):
 
 ```java
-// Correct service binding (extracted from R67 launcher decompiled code)
-VEHICLE_SERVICE_PACKAGE = "com.saicmotor.service.vehicle"
-VEHICLE_SERVICE_ACTION = "com.saicmotor.service.vehicle.VehicleService"
+// Step 1: Load SDK from launcher package context
+Context launcherContext = context.createPackageContext(
+    "com.saicmotor.hmi.launcher",
+    Context.CONTEXT_INCLUDE_CODE
+);
+ClassLoader launcherClassLoader = launcherContext.getClassLoader();
 
-// Key SDK classes used by launcher:
-// - com.saicmotor.sdk.vehiclesettings.manager.VehicleChargingManager
-// - Available methods:
-//   - getElectricityLevel()I - Battery level (SOC)
-//   - getCurrentEnduranceMileage()I - Current range in km
-//   - getVehicleChargingStatus() - Full charging bean
+// Step 2: Load VehicleChargingManager class via reflection
+Class<?> managerClass = launcherClassLoader.loadClass(
+    "com.saicmotor.sdk.vehiclesettings.manager.VehicleChargingManager"
+);
+
+// Step 3: Create dynamic proxy for IVehicleServiceListener (MUST NOT BE NULL)
+Class<?> listenerInterface = launcherClassLoader.loadClass(
+    "com.saicmotor.sdk.vehiclesettings.listener.IVehicleServiceListener"
+);
+Object listenerProxy = Proxy.newProxyInstance(
+    launcherClassLoader,
+    new Class<?>[] { listenerInterface },
+    (proxy, method, args) -> {
+        if ("onServiceConnected".equals(method.getName())) {
+            // Save manager instance and read data
+            managerInstance = args[0];
+            readVehicleData();
+        }
+        return null;
+    }
+);
+
+// Step 4: Initialize SDK with listener proxy
+Method initMethod = managerClass.getMethod(
+    "init",
+    Context.class,
+    listenerInterface,
+    Long.TYPE
+);
+initMethod.invoke(null, context, listenerProxy, 1500L);
+
+// Step 5: Get singleton instance
+Method getInstanceMethod = managerClass.getMethod("getInstance");
+Object manager = getInstanceMethod.invoke(null);
+
+// Step 6: Get vehicle data bean
+Method getStatusMethod = managerClass.getMethod("getVehicleChargingStatus");
+Object chargingBean = getStatusMethod.invoke(manager);
+
+// Step 7: Extract battery percentage (CORRECT METHOD)
+Method getBatteryMethod = chargingBean.getClass().getMethod("getCurrentElectricQuantity");
+Float batteryPercent = (Float) getBatteryMethod.invoke(chargingBean);
+int batteryLevel = Math.round(batteryPercent); // Convert 78.5 → 79
+
+// Step 8: Extract range in kilometers
+Method getRangeMethod = chargingBean.getClass().getMethod("getCurrentEnduranceMileage");
+Integer rangeKm = (Integer) getRangeMethod.invoke(chargingBean);
 ```
+
+**Key SDK Classes and Methods** (from `com.saicmotor.hmi.launcher` APK):
+
+- **VehicleChargingManager**
+  - `init(Context, IVehicleServiceListener, long)` - Initialize SDK (listener MUST NOT be null)
+  - `getInstance()` - Get singleton instance
+  - `getVehicleChargingStatus()` - Returns VehicleChargingBean
+
+- **VehicleChargingBean** (data container)
+  - ✅ `getCurrentElectricQuantity()` → Float - Battery percentage (e.g., 78.5)
+  - ✅ `getCurrentEnduranceMileage()` → Integer - Range in kilometers
+  - ❌ `getElectricityLevel()` → Integer - NOT battery percentage (different metric)
+
+- **IVehicleServiceListener** (callback interface)
+  - `onServiceConnected(BaseManager)` - Called when service binds successfully
+  - `onServiceDisconnected()` - Called when service unbinds
+
+**Common Pitfalls to Avoid**:
+
+1. ❌ Using `Class.forName()` - SDK classes not in app classloader
+2. ❌ Using `ClassLoader.getSystemClassLoader()` - SDK not in system classpath
+3. ❌ Passing `null` listener to `init()` - Causes NullPointerException crash
+4. ❌ Using `getElectricityLevel()` for battery - Returns wrong metric (not percentage)
+5. ✅ Use `createPackageContext()` to access launcher's classloader
+6. ✅ Use dynamic `Proxy.newProxyInstance()` for listener interface
+7. ✅ Use `getCurrentElectricQuantity()` for battery percentage
+
+### Bluetooth Album Art Integration ✅ WORKING
+
+**Tested on car**: 28 Jan 2026 - Album art successfully loads from Bluetooth storage
+
+**Implementation** (MediaListenerService.java):
+
+```java
+// Bluetooth stores album art in specific directory structure
+// Path: /storage/emulated/0/bluetooth/[MAC_ADDRESS]/AVRCP_BIP_IMG_*.JPEG
+
+// Step 1: Extract URI from media metadata
+String albumArtUriString = metadata.getString(MediaMetadata.METADATA_KEY_ART_URI);
+if (albumArtUriString == null || albumArtUriString.isEmpty()) {
+    albumArtUriString = metadata.getString(MediaMetadata.METADATA_KEY_ALBUM_ART_URI);
+}
+
+// Step 2: Decode URI (handles %20 spaces, etc.)
+String decodedPath = URLDecoder.decode(albumArtUriString, "UTF-8");
+
+// Step 3: Handle Bluetooth MAC format (colons vs encoded)
+// Bluetooth paths may have "AA:BB:CC:DD:EE:FF" or "AA%3ABB%3ACC..."
+decodedPath = decodedPath.replaceAll(": ", ":"); // Normalize spacing
+
+// Step 4: Extract file path from URI
+Uri albumArtUri = Uri.parse(decodedPath);
+String filePath = albumArtUri.getPath(); // e.g., "/storage/emulated/0/bluetooth/..."
+
+// Step 5: Use ContentResolver to open file (avoids permission issues)
+try {
+    InputStream inputStream = getContentResolver().openInputStream(albumArtUri);
+    Bitmap bitmap = BitmapFactory.decodeStream(inputStream);
+    inputStream.close();
+
+    // Update UI with bitmap
+    if (listener != null) {
+        listener.onAlbumArtChanged(bitmap);
+    }
+} catch (IOException e) {
+    Log.e(TAG, "Failed to load album art: " + e.getMessage());
+}
+```
+
+**Required Permissions** (AndroidManifest.xml):
+
+```xml
+<!-- Bluetooth permissions -->
+<uses-permission android:name="android.permission.BLUETOOTH" />
+<uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
+
+<!-- Storage permissions for album art access -->
+<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+<uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+
+<!-- Notification listener for media metadata -->
+<uses-permission android:name="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE" />
+
+<!-- Legacy storage access for Android 10+ -->
+<application
+    android:requestLegacyExternalStorage="true">
+```
+
+**Grant Permissions via ADB** (if not auto-granted):
+
+```bash
+adb shell pm grant com.custom.launcher android.permission.READ_EXTERNAL_STORAGE
+adb shell pm grant com.custom.launcher android.permission.WRITE_EXTERNAL_STORAGE
+```
+
+**Bluetooth Album Art File Structure**:
+
+```
+/storage/emulated/0/bluetooth/
+├── AA_BB_CC_DD_EE_FF/          # Bluetooth MAC address (underscores)
+│   ├── AVRCP_BIP_IMG_001.JPEG  # Current track album art
+│   ├── AVRCP_BIP_IMG_002.JPEG  # Previous/next track art
+│   └── ...
+```
+
+**Key Points**:
+
+- Use `ContentResolver.openInputStream()` instead of direct file access
+- Decode URI with `URLDecoder.decode()` to handle encoded characters
+- Bluetooth MAC addresses may use colons or underscores in path
+- AVRCP (Audio/Video Remote Control Profile) handles album art transfer
+- BIP (Basic Imaging Profile) is the Bluetooth protocol for image transfer
+- Album art updates automatically when track changes
 
 ### Build Configuration
 
@@ -204,19 +366,27 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 ## Known Challenges
 
-1. **Vehicle Service Access**
-   - May require system-level permissions
-   - APK might need platform signature
-   - Consider installing as system app in `/system/priv-app/`
+1. **Vehicle Service Access** ✅ SOLVED
+   - ~~May require system-level permissions~~ - No special permissions needed
+   - ~~APK might need platform signature~~ - Regular APK works fine
+   - ~~Consider installing as system app~~ - User app installation works
+   - **Solution**: Use `createPackageContext()` to access launcher's SDK classes
 
-2. **Testing Limitations**
-   - Cannot fully test vehicle data on Mac/emulator
-   - Mock data included for development
-   - Direct deployment to car recommended
+2. **Testing Limitations** ✅ PARTIALLY SOLVED
+   - Cannot fully test vehicle data on Mac/emulator (still true)
+   - Mock data included for development (fallback works well)
+   - Direct deployment to car recommended (confirmed working)
+   - **Debug Dialog**: Triple-tap clock to view logs on car without ADB
 
-3. **Signature Requirements**
-   - System apps may need platform certificate
-   - May need to extract signing keys from car system
+3. **Signature Requirements** ✅ NOT NEEDED
+   - ~~System apps may need platform certificate~~ - Not required
+   - ~~May need to extract signing keys~~ - Not required
+   - **Confirmed**: Regular debug APK works perfectly on car
+
+4. **New Challenge: Display Resolution** ⚠️ IMPORTANT
+   - Car display is **1778×720** NOT 1920×1080 as initially documented
+   - Use `layout-w1778dp/` qualifier for car-specific layouts
+   - Test on car, not emulator, for accurate UI sizing
 
 ## Next Steps
 
@@ -301,6 +471,36 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 7. ✅ Maximum 500 lines retained in buffer
 8. ✅ Wider dialog (1200px height) for better readability
 9. ✅ Auto-retry vehicle service binding every 10 seconds if connection fails
+10. ✅ Save logs to USB stick button (searches multiple mount points)
+
+### Phase 8: Vehicle Data & Album Art Integration ✅ WORKING ON CAR
+
+**Testing completed on car**: 28 Jan 2026
+**Status**: All features working perfectly
+
+**Discoveries and Fixes:**
+
+1. ✅ **SAIC SDK Access Method Found**
+   - SDK classes are in `com.saicmotor.hmi.launcher` APK, not system classloader
+   - Use `createPackageContext()` to load launcher's classloader
+   - Use reflection to access VehicleChargingManager
+   - **CRITICAL**: Must provide non-null IVehicleServiceListener or app crashes
+   - Solution: Dynamic `Proxy.newProxyInstance()` handles callbacks
+
+2. ✅ **Battery Percentage Method Corrected**
+   - ❌ Initial: `getElectricityLevel()` - Wrong method, returns different metric
+   - ✅ Correct: `getCurrentElectricQuantity()` - Returns Float battery percentage
+   - Tested on car: Shows accurate battery level
+
+3. ✅ **Range Data Working**
+   - Method: `getCurrentEnduranceMileage()` returns Integer kilometers
+   - Tested on car: Shows accurate remaining range
+
+4. ✅ **Bluetooth Album Art Working**
+   - Path: `/storage/emulated/0/bluetooth/[MAC]/AVRCP_BIP_IMG_*.JPEG`
+   - Use `ContentResolver.openInputStream()` to load images
+   - `URLDecoder.decode()` handles URI encoding
+   - Tested on car: Album art displays correctly for Bluetooth media
 
 **Implementation Details:**
 
