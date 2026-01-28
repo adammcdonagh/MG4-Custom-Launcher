@@ -264,28 +264,34 @@ public class VehicleDataService {
                     }
 
                     // Get battery level (SOC percentage)
-                    Log.i(TAG, "[DATA] Attempting getElectricityLevel()...");
+                    Log.i(TAG, "[DATA] Attempting getCurrentElectricQuantity()...");
                     try {
-                        Method getBatteryMethod = beanClass.getMethod("getElectricityLevel");
+                        Method getBatteryMethod = beanClass.getMethod("getCurrentElectricQuantity");
                         Object result = getBatteryMethod.invoke(chargingBean);
-                        Log.i(TAG, "[DATA] getElectricityLevel() returned: " + result + " (type: "
+                        Log.i(TAG, "[DATA] getCurrentElectricQuantity() returned: " + result + " (type: "
                                 + result.getClass().getSimpleName() + ")");
-                        if (result instanceof Integer) {
+                        if (result instanceof Float) {
+                            batteryLevel = Math.round((Float) result);
+                            Log.i(TAG, "[DATA] ✓✓✓ SUCCESS! Battery level: " + batteryLevel + "%");
+                            if (listener != null) {
+                                listener.onBatteryLevelChanged(batteryLevel);
+                            }
+                        } else if (result instanceof Integer) {
                             batteryLevel = (Integer) result;
                             Log.i(TAG, "[DATA] ✓✓✓ SUCCESS! Battery level: " + batteryLevel + "%");
                             if (listener != null) {
                                 listener.onBatteryLevelChanged(batteryLevel);
                             }
                         } else {
-                            Log.w(TAG, "[DATA] Result is not Integer, attempting conversion...");
-                            batteryLevel = Integer.parseInt(result.toString());
+                            Log.w(TAG, "[DATA] Result type unexpected, attempting conversion...");
+                            batteryLevel = Math.round(Float.parseFloat(result.toString()));
                             Log.i(TAG, "[DATA] ✓ Converted to: " + batteryLevel + "%");
                             if (listener != null) {
                                 listener.onBatteryLevelChanged(batteryLevel);
                             }
                         }
                     } catch (NoSuchMethodException e) {
-                        Log.e(TAG, "[DATA] ✗ Method getElectricityLevel() not found on bean");
+                        Log.e(TAG, "[DATA] ✗ Method getCurrentElectricQuantity() not found on bean");
                     }
 
                     // Try to get range
