@@ -178,3 +178,7 @@ fabric.properties
 !/gradle/wrapper/gradle-wrapper.jar
 
 # End of https://www.toptal.com/developers/gitignore/api/java,gradle,androidstudio
+
+# Firmware directory - keep directory but ignore contents
+mg_firmware/*
+!mg_firmware/.gitkeep

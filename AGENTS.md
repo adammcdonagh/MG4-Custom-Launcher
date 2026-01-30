@@ -341,28 +341,26 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 ## Important Paths
 
-### Extracted Firmware Locations
+### Firmware Directory Structure
 
-(Located in parent MG4 directory)
+All firmware files are located in the `mg_firmware/` directory within this repository:
 
-- R40: `../1100 SWI69 R40 11950861 13.06.25/`
-- R46: `../1300 SWI68 R46/`
-- R67: `../1300 SWI68 R67/`
+- **R40**: `mg_firmware/1100 SWI69 R40 11950861 13.06.25/`
+- **R46**: `mg_firmware/1300 SWI68 R46/`
+- **R67**: `mg_firmware/1300 SWI68 R67/`
+
+**Note**: The `mg_firmware/` directory is git-ignored (except for `.gitkeep`) to keep firmware files out of version control.
 
 ### Extracted APKs
 
-(Located in parent MG4 directory)
-
-- R40: `../1100 SWI69 R40 11950861 13.06.25/extracted_apks/EvCharge_eh32_ll.apk` ✅ (has widgets)
-- R46: `../1300 SWI68 R46/extracted_apks/` ❌ (no EvCharge)
-- R67: `../1300 SWI68 R67/extracted_apks/launcher_eh32_eu_P.apk` (current system launcher)
+- R40: `mg_firmware/1100 SWI69 R40 11950861 13.06.25/extracted_apks/EvCharge_eh32_ll.apk` ✅ (has widgets)
+- R46: `mg_firmware/1300 SWI68 R46/extracted_apks/` ❌ (no EvCharge)
+- R67: `mg_firmware/1300 SWI68 R67/extracted_apks/launcher_eh32_eu_P.apk` (current system launcher)
 
 ### Decompiled APKs
 
-(Located in parent MG4 directory)
-
-- EvCharge: `../1100 SWI69 R40 11950861 13.06.25/extracted_apks/EvCharge_eh32_ll/`
-- R67 Launcher: `../1300 SWI68 R67/extracted_apks/launcher_eh32_eu_P/`
+- EvCharge: `mg_firmware/1100 SWI69 R40 11950861 13.06.25/extracted_apks/EvCharge_eh32_ll/`
+- R67 Launcher: `mg_firmware/1300 SWI68 R67/extracted_apks/launcher_eh32_eu_P/`
 
 ## Known Challenges
 
