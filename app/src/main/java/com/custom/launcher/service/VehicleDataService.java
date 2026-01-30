@@ -4,7 +4,9 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 import android.util.Log;
 import com.custom.launcher.util.LogUtils;
 import java.lang.reflect.Method;
@@ -35,6 +37,11 @@ public class VehicleDataService {
     private boolean usingMockData = false;
     private Object vehicleServiceInterface = null;
 
+    // Polling for updates
+    private Handler updateHandler;
+    private static final long UPDATE_INTERVAL_MS = 10000; // Poll every 10 seconds
+    private boolean isPolling = false;
+
     // Vehicle data
     private int batteryLevel = 0;
     private int rangeKm = 0;
@@ -50,6 +57,7 @@ public class VehicleDataService {
     public VehicleDataService(Context context, VehicleDataListener listener) {
         this.context = context;
         this.listener = listener;
+        this.updateHandler = new Handler(Looper.getMainLooper());
     }
 
     /**
@@ -112,8 +120,9 @@ public class VehicleDataService {
                                             if (listener != null) {
                                                 listener.onConnectionStatusChanged(true);
                                             }
-                                            // Read data immediately
+                                            // Read data immediately and start polling
                                             readVehicleData();
+                                            startPolling();
                                         }
                                     } catch (Exception e) {
                                         Log.e(TAG, "[SDK] Error in listener callback: " + e.getMessage());
@@ -153,9 +162,10 @@ public class VehicleDataService {
                     listener.onConnectionStatusChanged(true);
                 }
 
-                // Try to read vehicle data immediately
+                // Try to read vehicle data immediately and start polling
                 Log.i(TAG, "[SDK] Step 6: Reading vehicle data...");
                 readVehicleData();
+                startPolling();
             } else {
                 Log.e(TAG, "[SDK] ✗✗✗ FAILED: getInstance() returned null");
                 Log.e(TAG, "[SDK] The SAIC SDK may not be available on this system");
@@ -200,6 +210,7 @@ public class VehicleDataService {
 
     public void unbind() {
         Log.i(TAG, "[CLEANUP] Cleaning up vehicle data service...");
+        stopPolling();
         vehicleServiceInterface = null;
         isBound = false;
     }
@@ -374,4 +385,62 @@ public class VehicleDataService {
     public boolean hasAttemptedBind() {
         return bindAttempted;
     }
+
+    /**
+     * Start periodic polling for vehicle data updates
+     */
+    private void startPolling() {
+        if (isPolling) {
+            Log.d(TAG, "[POLLING] Already polling, ignoring start request");
+            return;
+        }
+
+        Log.i(TAG, "[POLLING] Starting periodic vehicle data polling (every " + UPDATE_INTERVAL_MS + "ms)");
+        isPolling = true;
+        scheduleNextUpdate();
+    }
+
+    /**
+     * Stop periodic polling
+     */
+    private void stopPolling() {
+        if (isPolling) {
+            Log.i(TAG, "[POLLING] Stopping periodic vehicle data polling");
+            isPolling = false;
+            updateHandler.removeCallbacks(updateRunnable);
+        }
+    }
+
+    /**
+     * Schedule the next data update
+     */
+    private void scheduleNextUpdate() {
+        if (isPolling) {
+            updateHandler.postDelayed(updateRunnable, UPDATE_INTERVAL_MS);
+        }
+    }
+
+    /**
+     * Runnable that reads vehicle data and schedules the next update
+     */
+    private final Runnable updateRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (!isPolling) {
+                return;
+            }
+
+            Log.d(TAG, "[POLLING] Periodic update triggered");
+
+            // Read vehicle data
+            if (vehicleServiceInterface != null) {
+                readVehicleData();
+            } else {
+                Log.w(TAG, "[POLLING] Vehicle service interface is null, skipping update");
+            }
+
+            // Schedule next update
+            scheduleNextUpdate();
+        }
+    };
 }
