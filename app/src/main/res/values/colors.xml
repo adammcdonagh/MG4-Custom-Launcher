@@ -15,4 +15,9 @@
     <color name="battery_green">#30d158</color>
     <color name="battery_yellow">#ffd60a</color>
     <color name="battery_red">#ff453a</color>
+
+    <!-- Heating control colors -->
+    <color name="heating_level1">#FF9800</color>  <!-- Orange - Low heat -->
+    <color name="heating_level2">#FF6F00</color>  <!-- Deep orange - Medium heat -->
+    <color name="heating_level3">#FF5722</color>  <!-- Red-orange - High heat -->
 </resources>

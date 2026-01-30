@@ -45,6 +45,16 @@ public class MainActivity extends AppCompatActivity {
     private View batteryFill;
     private android.widget.SeekBar progressBar;
 
+    // Heating control views
+    private ImageView leftSeatIcon;
+    private ImageView rightSeatIcon;
+    private ImageView wheelIcon;
+
+    // Heating control states (0 = off, 1-3 = heat levels)
+    private int leftSeatLevel = 0;
+    private int rightSeatLevel = 0;
+    private boolean wheelHeating = false;
+
     private VehicleDataService vehicleDataService;
     private Handler timeHandler;
     private Runnable timeRunnable;
@@ -196,6 +206,33 @@ public class MainActivity extends AppCompatActivity {
         batteryCard = findViewById(R.id.batteryCard);
         batteryFill = findViewById(R.id.batteryFill);
 
+        // Initialize heating control views (with null safety)
+        leftSeatIcon = findViewById(R.id.leftSeatIcon);
+        rightSeatIcon = findViewById(R.id.rightSeatIcon);
+        wheelIcon = findViewById(R.id.wheelIcon);
+
+        // Setup heating control click listeners (only if views exist)
+        View leftSeatButton = findViewById(R.id.leftSeatButton);
+        if (leftSeatButton != null) {
+            leftSeatButton.setOnClickListener(v -> toggleLeftSeat());
+        } else {
+            Log.w(TAG, "leftSeatButton not found in layout");
+        }
+
+        View rightSeatButton = findViewById(R.id.rightSeatButton);
+        if (rightSeatButton != null) {
+            rightSeatButton.setOnClickListener(v -> toggleRightSeat());
+        } else {
+            Log.w(TAG, "rightSeatButton not found in layout");
+        }
+
+        View wheelButton = findViewById(R.id.wheelButton);
+        if (wheelButton != null) {
+            wheelButton.setOnClickListener(v -> toggleWheel());
+        } else {
+            Log.w(TAG, "wheelButton not found in layout");
+        }
+
         // Setup debug triple-tap on clock
         timeText.setOnClickListener(v -> handleClockTap());
 
@@ -323,6 +360,96 @@ public class MainActivity extends AppCompatActivity {
             Log.e(TAG, "Failed to open USB Debug Screen: " + e.getMessage());
             Toast.makeText(this, "Error opening debug screen", Toast.LENGTH_SHORT).show();
         }
+    }
+
+    /**
+     * Heating control methods
+     * Seats have 3 levels (off -> 3 -> 2 -> 1 -> off)
+     * Wheel is binary (off -> on -> off)
+     */
+    private void toggleLeftSeat() {
+        if (leftSeatLevel == 0) {
+            // Off -> Level 3
+            leftSeatLevel = 3;
+        } else if (leftSeatLevel == 3) {
+            // Level 3 -> Level 2
+            leftSeatLevel = 2;
+        } else if (leftSeatLevel == 2) {
+            // Level 2 -> Level 1
+            leftSeatLevel = 1;
+        } else {
+            // Level 1 -> Off
+            leftSeatLevel = 0;
+        }
+        updateSeatDisplay(leftSeatIcon, leftSeatLevel);
+        Log.i(TAG, "Left seat heating: Level " + leftSeatLevel);
+
+        // TODO: Send command to vehicle heating system
+        sendHeatingCommand("left_seat", leftSeatLevel);
+    }
+
+    private void toggleRightSeat() {
+        if (rightSeatLevel == 0) {
+            // Off -> Level 3
+            rightSeatLevel = 3;
+        } else if (rightSeatLevel == 3) {
+            // Level 3 -> Level 2
+            rightSeatLevel = 2;
+        } else if (rightSeatLevel == 2) {
+            // Level 2 -> Level 1
+            rightSeatLevel = 1;
+        } else {
+            // Level 1 -> Off
+            rightSeatLevel = 0;
+        }
+        updateSeatDisplay(rightSeatIcon, rightSeatLevel);
+        Log.i(TAG, "Right seat heating: Level " + rightSeatLevel);
+
+        // TODO: Send command to vehicle heating system
+        sendHeatingCommand("right_seat", rightSeatLevel);
+    }
+
+    private void toggleWheel() {
+        wheelHeating = !wheelHeating;
+        updateWheelDisplay();
+        Log.i(TAG, "Steering wheel heating: " + (wheelHeating ? "ON" : "OFF"));
+
+        // TODO: Send command to vehicle heating system
+        sendHeatingCommand("steering_wheel", wheelHeating ? 1 : 0);
+    }
+
+    private void updateSeatDisplay(ImageView icon, int level) {
+        switch (level) {
+            case 0:
+                icon.setImageResource(R.drawable.ic_heated_seat_off);
+                break;
+            case 1:
+                icon.setImageResource(R.drawable.ic_heated_seat_level1);
+                break;
+            case 2:
+                icon.setImageResource(R.drawable.ic_heated_seat_level2);
+                break;
+            case 3:
+                icon.setImageResource(R.drawable.ic_heated_seat_level3);
+                break;
+        }
+    }
+
+    private void updateWheelDisplay() {
+        if (wheelHeating) {
+            wheelIcon.setImageResource(R.drawable.ic_heated_wheel_on);
+        } else {
+            wheelIcon.setImageResource(R.drawable.ic_heated_wheel_off);
+        }
+    }
+
+    private void sendHeatingCommand(String device, int level) {
+        // Placeholder for vehicle heating system integration
+        // This would interface with the SAIC vehicle service to control heating
+        Log.i(TAG, "Sending heating command: " + device + " = " + level);
+
+        // TODO: Integrate with VehicleDataService or create HeatingControlService
+        // Example: vehicleHeatingService.setHeatingLevel(device, level);
     }
 
     private void checkNotificationListenerPermission() {
