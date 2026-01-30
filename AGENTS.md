@@ -99,11 +99,12 @@ CustomLauncher/
 1. ✅ Battery & Range Display (color-coded card)
 2. ✅ Time & Date Widget (auto-updating)
 3. ✅ Now Playing Card (media info + controls)
-4. ✅ App Shortcuts Grid
-5. ✅ Vehicle Service Binding (with mock fallback)
-6. ✅ Media Session Integration
-7. ✅ Dark Theme UI
-8. ✅ Debug Dialog (triple-tap clock to view live logs)
+4. ✅ Heated Seats & Steering Wheel Controls (with vehicle sync)
+5. ✅ App Shortcuts Grid
+6. ✅ Vehicle Service Binding (with mock fallback)
+7. ✅ Media Session Integration
+8. ✅ Dark Theme UI
+9. ✅ Debug Dialog (triple-tap clock to view live logs)
 
 ## Technical Details
 
@@ -506,6 +507,7 @@ All firmware files are located in the `mg_firmware/` directory within this repos
 - **Log Filters**: Shows only relevant logs:
   - `CustomLauncher:V` - Main launcher logs
   - `VehicleDataService:V` - Vehicle service binding logs
+  - `HeatingControlService:V` - Heating control service logs (seats & steering wheel)
   - `MediaListenerService:V` - Media service logs
   - `AndroidRuntime:E` - Critical errors
 - **Permission**: Added `android.permission.READ_LOGS`
@@ -617,6 +619,119 @@ private void openChargeManagement() {
 2. Verify battery card click opens Charge Management Activity
 3. Confirm all three tabs are accessible in the opened activity
 4. Test back navigation returns to custom launcher
+
+### Phase 9: Heating Controls Integration ✅ WORKING
+
+**Date**: 30 Jan 2026
+**Status**: Fully functional with SAIC SDK integration
+
+**Implementation:**
+
+Created HeatingControlService to interface with SAIC AirConditionManager for heated seats and steering wheel control. The service uses reflection to access the SDK classes from the HVAC app package.
+
+**Key Features:**
+
+1. ✅ **Bidirectional Communication**
+   - Send heating commands to vehicle
+   - Receive status updates from vehicle
+   - Automatic UI sync when vehicle changes heating levels
+
+2. ✅ **Driver & Passenger Seat Heating**
+   - 4 levels: OFF → Level 3 (High) → Level 2 (Med) → Level 1 (Low) → OFF
+   - Independent control for left and right seats
+   - Visual feedback with different icon states
+
+3. ✅ **Steering Wheel Heating**
+   - Binary control: OFF ↔ ON
+   - Visual feedback with on/off icons
+
+4. ✅ **Vehicle Auto-Adjustment Tracking**
+   - Car automatically reduces seat heating after time
+   - Callback system updates UI to match actual vehicle state
+   - No desync between UI and vehicle
+
+**SAIC SDK Methods Used:**
+
+```java
+// From AirConditionManager
+setDrvSeatHeatLevel(int level)      // Set driver seat (0-3)
+setPsgSeatHeatLevel(int level)      // Set passenger seat (0-3)
+setSteeringWheelHeat(int level)     // Set steering wheel (0-1)
+
+// From AirConditionBean (via callback)
+getDrvSeatHeatLevel()               // Get driver seat current level
+getPsgSeatHeatLevel()               // Get passenger seat current level
+getSteeringWheelHeatLevel()         // Get steering wheel current state
+```
+
+**Initialization Pattern:**
+
+```java
+// Load SDK from HVAC app package
+Context hvacContext = context.createPackageContext(
+    "com.saicmotor.hmi.hvac",
+    Context.CONTEXT_INCLUDE_CODE
+);
+ClassLoader hvacClassLoader = hvacContext.getClassLoader();
+
+// Load AirConditionManager
+Class<?> managerClass = hvacClassLoader.loadClass(
+    "com.saicmotor.sdk.vehiclesettings.manager.AirConditionManager"
+);
+
+// Initialize with listener for connection callbacks
+Method initMethod = managerClass.getMethod(
+    "init",
+    Context.class,
+    IVehicleServiceListener.class,
+    Long.TYPE
+);
+initMethod.invoke(null, context, listenerProxy, 1500L);
+
+// Register callback for status updates
+Method registerMethod = managerInstance.getClass().getMethod(
+    "registerAirConditionCallback",
+    IAirConditionCallback.class
+);
+registerMethod.invoke(managerInstance, callbackProxy);
+```
+
+**Files Modified:**
+
+1. **HeatingControlService.java** (NEW)
+   - Manages connection to AirConditionManager
+   - Sends heating commands to vehicle
+   - Receives status updates via callbacks
+   - Similar architecture to VehicleDataService
+
+2. **MainActivity.java**
+   - Added HeatingControlService initialization
+   - Connected toggle buttons to service methods
+   - Added listener for vehicle status updates
+   - Removed placeholder sendHeatingCommand()
+   - UI automatically updates when vehicle changes state
+
+**Testing Notes:**
+
+- Service connects successfully to HVAC system
+- Heating commands sent via reflection work correctly
+- Callback system receives status updates from vehicle
+- UI stays in sync even when car auto-adjusts heating levels
+- No permission issues (uses same pattern as VehicleDataService)
+
+**Technical Challenges Solved:**
+
+1. ✅ Found correct SDK classes in HVAC app (not system)
+2. ✅ Implemented callback proxy for bidirectional communication
+3. ✅ Handled reflection for all SDK method calls
+4. ✅ Synchronized UI updates on main thread from callbacks
+5. ✅ Proper resource cleanup in onDestroy()
+
+**Known Behavior:**
+
+- Vehicle automatically reduces seat heating after ~30 minutes for safety
+- HeatingControlService callback detects this and updates UI
+- This is expected vehicle behavior, not a bug
 
 ## Resources
 

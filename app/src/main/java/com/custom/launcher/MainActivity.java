@@ -24,6 +24,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.cardview.widget.CardView;
+import com.custom.launcher.service.HeatingControlService;
 import com.custom.launcher.service.MediaListenerService;
 import com.custom.launcher.service.VehicleDataService;
 import com.custom.launcher.util.LogUtils;
@@ -56,6 +57,7 @@ public class MainActivity extends AppCompatActivity {
     private boolean wheelHeating = false;
 
     private VehicleDataService vehicleDataService;
+    private HeatingControlService heatingControlService;
     private Handler timeHandler;
     private Runnable timeRunnable;
     private Handler progressHandler;
@@ -66,6 +68,7 @@ public class MainActivity extends AppCompatActivity {
     private final Runnable retryRunnable = new Runnable() {
         @Override
         public void run() {
+            // Retry vehicle data service
             if (vehicleDataService != null && !vehicleDataService.isConnected()) {
                 Log.i(TAG, "[RETRY] Retrying vehicle service connection (attempt at " +
                         new SimpleDateFormat("HH:mm:ss", Locale.UK).format(new Date()) + ")");
@@ -75,13 +78,32 @@ public class MainActivity extends AppCompatActivity {
                     LogUtils.logError(TAG, "[RETRY] ✗ Exception during retry", e);
                 }
             } else if (vehicleDataService != null && vehicleDataService.isConnected()) {
-                Log.i(TAG, "[RETRY] Service is now connected, stopping retry loop");
-                return; // Don't schedule another retry
+                Log.i(TAG, "[RETRY] Vehicle service is now connected");
             }
-            // Always schedule next retry if not connected
-            retryHandler.removeCallbacks(this);
-            retryHandler.postDelayed(this, RETRY_INTERVAL_MS);
-            Log.i(TAG, "[RETRY] Next retry scheduled in " + (RETRY_INTERVAL_MS / 1000) + " seconds");
+
+            // Retry heating control service
+            if (heatingControlService != null && !heatingControlService.isConnected()) {
+                Log.i(TAG, "[RETRY] Retrying heating service connection (attempt at " +
+                        new SimpleDateFormat("HH:mm:ss", Locale.UK).format(new Date()) + ")");
+                try {
+                    heatingControlService.bind();
+                } catch (Exception e) {
+                    LogUtils.logError(TAG, "[RETRY] ✗ Exception during heating retry", e);
+                }
+            } else if (heatingControlService != null && heatingControlService.isConnected()) {
+                Log.i(TAG, "[RETRY] Heating service is now connected");
+            }
+
+            // Continue retrying if either service is not connected
+            boolean shouldRetry = (vehicleDataService != null && !vehicleDataService.isConnected()) ||
+                    (heatingControlService != null && !heatingControlService.isConnected());
+            if (shouldRetry) {
+                retryHandler.removeCallbacks(this);
+                retryHandler.postDelayed(this, RETRY_INTERVAL_MS);
+                Log.i(TAG, "[RETRY] Next retry scheduled in " + (RETRY_INTERVAL_MS / 1000) + " seconds");
+            } else {
+                Log.i(TAG, "[RETRY] All services connected, stopping retry loop");
+            }
         }
     };
 
@@ -384,8 +406,12 @@ public class MainActivity extends AppCompatActivity {
         updateSeatDisplay(leftSeatIcon, leftSeatLevel);
         Log.i(TAG, "Left seat heating: Level " + leftSeatLevel);
 
-        // TODO: Send command to vehicle heating system
-        sendHeatingCommand("left_seat", leftSeatLevel);
+        // Send command to vehicle heating system
+        if (heatingControlService != null && heatingControlService.isConnected()) {
+            heatingControlService.setDriverSeatHeating(leftSeatLevel);
+        } else {
+            Log.w(TAG, "Heating service not connected, command not sent");
+        }
     }
 
     private void toggleRightSeat() {
@@ -405,8 +431,12 @@ public class MainActivity extends AppCompatActivity {
         updateSeatDisplay(rightSeatIcon, rightSeatLevel);
         Log.i(TAG, "Right seat heating: Level " + rightSeatLevel);
 
-        // TODO: Send command to vehicle heating system
-        sendHeatingCommand("right_seat", rightSeatLevel);
+        // Send command to vehicle heating system
+        if (heatingControlService != null && heatingControlService.isConnected()) {
+            heatingControlService.setPassengerSeatHeating(rightSeatLevel);
+        } else {
+            Log.w(TAG, "Heating service not connected, command not sent");
+        }
     }
 
     private void toggleWheel() {
@@ -414,8 +444,12 @@ public class MainActivity extends AppCompatActivity {
         updateWheelDisplay();
         Log.i(TAG, "Steering wheel heating: " + (wheelHeating ? "ON" : "OFF"));
 
-        // TODO: Send command to vehicle heating system
-        sendHeatingCommand("steering_wheel", wheelHeating ? 1 : 0);
+        // Send command to vehicle heating system
+        if (heatingControlService != null && heatingControlService.isConnected()) {
+            heatingControlService.setSteeringWheelHeating(wheelHeating ? 1 : 0);
+        } else {
+            Log.w(TAG, "Heating service not connected, command not sent");
+        }
     }
 
     private void updateSeatDisplay(ImageView icon, int level) {
@@ -441,15 +475,6 @@ public class MainActivity extends AppCompatActivity {
         } else {
             wheelIcon.setImageResource(R.drawable.ic_heated_wheel_off);
         }
-    }
-
-    private void sendHeatingCommand(String device, int level) {
-        // Placeholder for vehicle heating system integration
-        // This would interface with the SAIC vehicle service to control heating
-        Log.i(TAG, "Sending heating command: " + device + " = " + level);
-
-        // TODO: Integrate with VehicleDataService or create HeatingControlService
-        // Example: vehicleHeatingService.setHeatingLevel(device, level);
     }
 
     private void checkNotificationListenerPermission() {
@@ -522,6 +547,41 @@ public class MainActivity extends AppCompatActivity {
         vehicleDataService.bind();
         // Start retry loop immediately in case first bind fails
         startRetryLoop();
+
+        // Initialize heating control service
+        heatingControlService = new HeatingControlService(this);
+        heatingControlService.setStatusListener(new HeatingControlService.HeatingStatusListener() {
+            @Override
+            public void onHeatingStatusChanged(int drvSeatLevel, int psgSeatLevel, int wheelLevel) {
+                // Update UI with actual vehicle heating status
+                runOnUiThread(() -> {
+                    leftSeatLevel = drvSeatLevel;
+                    rightSeatLevel = psgSeatLevel;
+                    wheelHeating = (wheelLevel > 0);
+                    updateSeatDisplay(leftSeatIcon, leftSeatLevel);
+                    updateSeatDisplay(rightSeatIcon, rightSeatLevel);
+                    updateWheelDisplay();
+                    Log.d(TAG, String.format("Heating status updated: L=%d R=%d W=%d",
+                            drvSeatLevel, psgSeatLevel, wheelLevel));
+                });
+            }
+
+            @Override
+            public void onConnectionStatusChanged(boolean connected) {
+                if (connected) {
+                    Log.i(TAG, "[RETRY] Heating service connected successfully");
+                    // Check if vehicle service is also connected to stop retry loop
+                    if (vehicleDataService != null && vehicleDataService.isConnected()) {
+                        stopRetryLoop();
+                    }
+                } else {
+                    Log.w(TAG, "[RETRY] Heating service connection failed, will retry");
+                    startRetryLoop();
+                }
+            }
+        });
+
+        heatingControlService.bind();
     }
 
     private void startRetryLoop() {
@@ -782,6 +842,10 @@ public class MainActivity extends AppCompatActivity {
 
         if (vehicleDataService != null) {
             vehicleDataService.unbind();
+        }
+
+        if (heatingControlService != null) {
+            heatingControlService.release();
         }
 
         if (timeHandler != null) {
@@ -1056,6 +1120,7 @@ public class MainActivity extends AppCompatActivity {
                             "-s",
                             TAG + ":V",
                             "VehicleDataService:V",
+                            "HeatingControlService:V",
                             "MediaListenerService:V",
                             "SaicMediaService:V",
                             "AndroidRuntime:E"
@@ -1099,6 +1164,7 @@ public class MainActivity extends AppCompatActivity {
                             "-s",
                             TAG + ":V",
                             "VehicleDataService:V",
+                            "HeatingControlService:V",
                             "MediaListenerService:V",
                             "SaicMediaService:V",
                             "AndroidRuntime:E"
