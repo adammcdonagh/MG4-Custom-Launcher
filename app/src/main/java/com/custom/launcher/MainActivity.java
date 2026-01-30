@@ -198,13 +198,13 @@ public class MainActivity extends AppCompatActivity {
 
         // Setup debug triple-tap on clock
         timeText.setOnClickListener(v -> handleClockTap());
-        
+
         // Long press on clock to open USB debug screen
         timeText.setOnLongClickListener(v -> {
             openUsbDebugScreen();
             return true;
         });
-        
+
         progressBar = findViewById(R.id.progressBar);
 
         // Disable SeekBar interaction (read-only progress indicator)
