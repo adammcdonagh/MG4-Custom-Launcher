@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000000">
+
+    <!-- Back Button -->
+    <ImageView
+        android:id="@+id/iv_back"
+        android:layout_width="60dp"
+        android:layout_height="60dp"
+        android:layout_marginStart="30dp"
+        android:layout_marginTop="20dp"
+        android:padding="15dp"
+        android:src="@drawable/ic_back"
+        android:contentDescription="Back"
+        android:background="?android:attr/selectableItemBackgroundBorderless"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <!-- Title -->
+    <TextView
+        android:id="@+id/tv_title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="95dp"
+        android:layout_marginTop="30dp"
+        android:text="USB/ADB Debug Info"
+        android:textColor="#FFFFFF"
+        android:textSize="30sp"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <!-- Info Text -->
+    <TextView
+        android:id="@+id/tv_info"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="95dp"
+        android:layout_marginTop="10dp"
+        android:layout_marginEnd="30dp"
+        android:text="Auto-refreshes every 2 seconds"
+        android:textColor="#888888"
+        android:textSize="16sp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/tv_title" />
+
+    <!-- Scrollable Table -->
+    <androidx.cardview.widget.CardView
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:layout_marginStart="30dp"
+        android:layout_marginTop="20dp"
+        android:layout_marginEnd="30dp"
+        android:layout_marginBottom="30dp"
+        app:cardBackgroundColor="#1A1A1A"
+        app:cardCornerRadius="12dp"
+        app:cardElevation="8dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/tv_info">
+
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:padding="20dp">
+
+            <TableLayout
+                android:id="@+id/debugTable"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:stretchColumns="*" />
+
+        </ScrollView>
+
+    </androidx.cardview.widget.CardView>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

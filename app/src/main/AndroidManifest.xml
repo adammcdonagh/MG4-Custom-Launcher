@@ -43,6 +43,12 @@
             </intent-filter>
         </activity>
 
+        <!-- USB Debug Activity -->
+        <activity
+            android:name=".UsbDebugActivity"
+            android:exported="false"
+            android:theme="@style/AppTheme" />
+
         <!-- Vehicle Service Connection -->
         <service
             android:name=".service.VehicleDataService"

@@ -198,6 +198,13 @@ public class MainActivity extends AppCompatActivity {
 
         // Setup debug triple-tap on clock
         timeText.setOnClickListener(v -> handleClockTap());
+        
+        // Long press on clock to open USB debug screen
+        timeText.setOnLongClickListener(v -> {
+            openUsbDebugScreen();
+            return true;
+        });
+        
         progressBar = findViewById(R.id.progressBar);
 
         // Disable SeekBar interaction (read-only progress indicator)
@@ -304,6 +311,17 @@ public class MainActivity extends AppCompatActivity {
         } catch (Exception e) {
             Log.e(TAG, "✗ Failed to open original launcher (expected on emulator): " + e.getMessage());
             Log.i(TAG, "This will work on the actual MG4 car where SAIC launcher is installed");
+        }
+    }
+
+    private void openUsbDebugScreen() {
+        try {
+            Log.i(TAG, "Opening USB Debug Screen...");
+            Intent intent = new Intent(this, UsbDebugActivity.class);
+            startActivity(intent);
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to open USB Debug Screen: " + e.getMessage());
+            Toast.makeText(this, "Error opening debug screen", Toast.LENGTH_SHORT).show();
         }
     }
 
