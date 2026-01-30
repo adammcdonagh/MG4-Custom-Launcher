@@ -454,6 +454,76 @@ All firmware files are located in the `mg_firmware/` directory within this repos
 - Testing: Android Automotive emulator + Direct deployment to vehicle via ADB
 - Android SDK: `/Users/adam/Library/Android/sdk`
 
+## Root Access Status ⚠️ - **UPDATED: ROOTING NOT REQUIRED**
+
+**CRITICAL DISCOVERY (30 Jan 2026):** All MG4 system apps are signed with publicly available **AOSP platform test keys**, eliminating the need for root access for most system modifications!
+
+### AOSP Test Keys Discovery ✅ GAME CHANGER
+
+**Certificate Details** (verified with keytool):
+
+- **Serial Number**: `b3998086d056cffa`
+- **SHA1 Fingerprint**: `27:19:6E:38:6B:87:5E:76:AD:F7:00:E7:EA:84:E4:C6:EE:E3:3D:FA`
+- **Owner**: `android@android.com`
+- **Verified APKs**: launcher_eh32_eu_P.apk, vehiclesettings_eh32_eu_P.apk, hvac_eh32_eu_P.apk, systemsettings_eh32_eu_P.apk, AllgoCarplay_EH32.apk, AAP_EH32.apk
+
+**Public Key Location:**
+
+- AOSP Repository: `https://android.googlesource.com/platform/build/+/refs/heads/master/target/product/security/`
+- Files: `platform.pk8` (private key), `platform.x509.pem` (certificate)
+
+**Implications:**
+
+- ✅ We can sign custom apps with system-level privileges WITHOUT root
+- ✅ Can modify system apps (AllgoCarplay, launcher) and re-sign them
+- ✅ Can create system-level apps with `android:sharedUserId="android.uid.system"`
+- ✅ Wireless CarPlay modifications possible without root
+- ⚠️ This is a **major security vulnerability** in SAIC firmware
+
+**Documentation:**
+
+- **AOSP Keys Discovery**: `docs/AOSP_TEST_KEYS_DISCOVERY.md` (comprehensive analysis)
+- **CarPlay USB Analysis**: `docs/CARPLAY_USB_ANALYSIS.md` (how AllgoCarplay works)
+- **Wireless CarPlay Feasibility**: `docs/WIRELESS_CARPLAY_FEASIBILITY.md` (implementation paths)
+- **AllgoCarplay Modification**: `docs/ALLGOCARPLAY_MODIFICATION_ANALYSIS.md` (system app modification guide)
+
+### Original Root Access Documentation (Now Optional)
+
+**Previous understanding:** The MG4 infotainment system is NOT rooted, which restricts modifications.
+
+**What We Previously Thought We COULDN'T Do:**
+
+- ❌ Replace system apps → **Now possible with platform signing**
+- ❌ Modify `/system` partition → **Still read-only, but can replace system apps**
+- ❌ Install APKs with system signature → **Now possible with AOSP test keys**
+- ❌ Access protected APIs → **Now possible with platform signing**
+- ❌ Enable wireless CarPlay → **Now possible with AllgoCarplay modification**
+
+**Current Approach (No Root Required):**
+
+- ✅ Custom launcher runs as **user app** (still works fine)
+- ✅ Uses reflection to access SAIC SDK from launcher/HVAC packages
+- ✅ Can launch system activities via Intent
+- ✅ **NEW**: Can create system-level apps with platform signing
+- ✅ **NEW**: Can modify and re-sign system apps like AllgoCarplay
+
+### Rooting Documentation (Optional Path):
+
+- **Full rooting guide:** `docs/ROOTING_GUIDE.md` (if you still want root)
+- **System info script:** `scripts/gather_system_info.sh`
+- **Backup script:** `scripts/backup_firmware.sh`
+
+### Next Steps with Platform Signing (Recommended):
+
+1. Download AOSP platform keys from repository
+2. Sign custom launcher with `platform.pk8` and add `android:sharedUserId="android.uid.system"`
+3. Test system-level access (vehicle data, media control, settings)
+4. Modify AllgoCarplay for wireless support
+5. Re-sign modified AllgoCarplay with platform keys
+6. Install modified system apps via ADB (no root needed)
+
+**NOTE:** Rooting is now **optional** for most modifications. Platform signing provides system privileges without the risks of rooting.
+
 ### Phase 7: Debug Dialog Feature ✅
 
 **Build completed**: 24 Jan 2026
@@ -735,7 +805,51 @@ registerMethod.invoke(managerInstance, callbackProxy);
 
 ## Resources
 
-- OTA extraction tools installed: `payload-dumper-go`, `p7zip`, `apktool`
+- OTA extraction tools installed: `payload-dumper-go`, `p7zip`, `apktool`, `jadx`
 - All firmware packages available in workspace
 - Stock launcher decompiled and analyzed
 - Custom launcher built and tested on emulator
+
+### Documentation Index
+
+#### Custom Launcher Documentation:
+
+- **Main README**: `README.md` - Project overview and build instructions
+- **Agent Context**: `AGENTS.md` - This file, for session resumption
+
+#### CarPlay & Wireless Modifications:
+
+- **CarPlay USB Analysis**: `docs/CARPLAY_USB_ANALYSIS.md`
+  - How AllgoCarplay interfaces with USB ports
+  - AOAP (Android Open Accessory Protocol) architecture
+  - USB communication flow and SAIC SDK integration
+- **Wireless CarPlay Feasibility**: `docs/WIRELESS_CARPLAY_FEASIBILITY.md`
+  - Three implementation paths (software mod, adapter, hybrid)
+  - Hardware requirements (Bluetooth LE + WiFi Direct 5 GHz)
+  - Cost analysis and recommendations
+- **AllgoCarplay Modification Analysis**: `docs/ALLGOCARPLAY_MODIFICATION_ANALYSIS.md`
+  - System app location: `/system/app/AllgoCarplay_EH32/` (corrected)
+  - sharedUserId requirements
+  - Platform signing requirements
+
+#### Platform Signing & Security:
+
+- **AOSP Test Keys Discovery**: `docs/AOSP_TEST_KEYS_DISCOVERY.md` ⭐ **CRITICAL**
+  - Certificate verification results (serial: b3998086d056cffa)
+  - Security implications (major vulnerability)
+  - Step-by-step signing instructions
+  - System-level app creation guide
+
+#### Rooting Documentation (Optional):
+
+- **Rooting Guide**: `docs/ROOTING_GUIDE.md`
+  - Comprehensive rooting procedures
+  - Magisk method, bootloader unlocking
+  - Recovery plans and backup procedures
+  - **Note**: Now optional due to AOSP keys discovery
+
+#### Utility Scripts:
+
+- **scripts/README.md** - Script documentation
+- **scripts/gather_system_info.sh** - Collects system info via ADB
+- **scripts/backup_firmware.sh** - Creates partition backups
