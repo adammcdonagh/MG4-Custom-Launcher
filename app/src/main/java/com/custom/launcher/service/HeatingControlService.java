@@ -59,15 +59,15 @@ public class HeatingControlService {
             Log.i(TAG, "✓ Loaded HVAC package classloader");
 
             // Step 2: Load manager and callback classes
-            Class<?> managerClass = launcherClassLoader.loadClass(SDK_MANAGER_CLASS);
-            Class<?> listenerInterface = launcherClassLoader.loadClass(SDK_LISTENER_CLASS);
-            Class<?> callbackInterface = launcherClassLoader.loadClass(SDK_CALLBACK_CLASS);
+            Class<Object> managerClass = (Class<Object>) launcherClassLoader.loadClass(SDK_MANAGER_CLASS);
+            Class<Object> listenerInterface = (Class<Object>) launcherClassLoader.loadClass(SDK_LISTENER_CLASS);
+            Class<Object> callbackInterface = (Class<Object>) launcherClassLoader.loadClass(SDK_CALLBACK_CLASS);
             Log.i(TAG, "✓ Loaded SDK classes via reflection");
 
             // Step 3: Create listener proxy for service connection
             Object listenerProxy = Proxy.newProxyInstance(
                     launcherClassLoader,
-                    new Class<?>[] { listenerInterface },
+                    new Class[] { listenerInterface },
                     new InvocationHandler() {
                         @Override
                         public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {

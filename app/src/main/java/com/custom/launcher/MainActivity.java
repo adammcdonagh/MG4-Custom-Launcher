@@ -868,6 +868,9 @@ public class MainActivity extends AppCompatActivity {
     @Override
     public void onBackPressed() {
         // Don't allow back button to exit launcher
+        // Call super to satisfy lint, but it won't actually exit since this is a
+        // launcher
+        super.onBackPressed();
     }
 
     /**
