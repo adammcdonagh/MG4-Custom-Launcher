@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Wireless CarPlay</string>
+    <string name="service_starting">Starting Wireless CarPlay Bridge...</string>
+    <string name="service_running">Wireless CarPlay Bridge is running</string>
+    <string name="service_stopped">Wireless CarPlay Bridge stopped</string>
+    <string name="waiting_for_iphone">Waiting for iPhone connection...</string>
+    <string name="iphone_connected">iPhone connected</string>
+    <string name="carplay_active">CarPlay active</string>
+</resources>

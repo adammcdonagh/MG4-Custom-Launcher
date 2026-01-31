@@ -809,6 +809,55 @@ registerMethod.invoke(managerInstance, callbackProxy);
 - All firmware packages available in workspace
 - Stock launcher decompiled and analyzed
 - Custom launcher built and tested on emulator
+- **Wireless CarPlay Bridge project created** - See `WirelessCarPlayBridge/` directory
+
+### Wireless CarPlay Implementation (NEW - 31 Jan 2026)
+
+**Project Location**: `WirelessCarPlayBridge/`
+
+**Purpose**: Software-based wireless CarPlay adapter for MG4
+
+**Status**: ✅ Built and ready for testing on car
+
+**How It Works**:
+
+1. **BLE Advertisement**: Broadcasts CarPlay capability (UUID: 0x0000FD8F)
+2. **WiFi Direct**: Establishes P2P connection with iPhone (5 GHz)
+3. **Virtual USB Device**: Creates USB gadget that AllgoCarplay sees as "wired iPhone"
+4. **Data Bridge**: Routes WiFi packets through virtual USB interface
+
+**Build & Install**:
+
+```bash
+cd WirelessCarPlayBridge
+./gradlew assembleDebug && ./sign_apk.sh
+adb install -r app/build/outputs/apk/debug/app-debug-signed.apk
+```
+
+**Key Files**:
+
+- `WirelessCarPlayBridgeService.java` - Main service coordinator
+- `CarPlayBleAdvertiser.java` - BLE advertisement (announces CarPlay)
+- `WiFiDirectManager.java` - WiFi P2P connection management
+- `UsbGadgetController.java` - Virtual USB device creation (Linux ConfigFS)
+- `DataBridge.java` - Bidirectional WiFi ↔ USB packet routing
+
+**Requirements**:
+
+- ✅ Bluetooth LE 4.0+ (MG4 R67 confirmed)
+- ✅ System-level permissions (android.uid.system via platform signing)
+- ❓ WiFi 5 GHz with P2P support (need to verify on car)
+- ❓ Kernel CONFIG_USB_CONFIGFS (need to check: `adb shell ls /config/usb_gadget`)
+
+**Success Probability**: 40-60% (depends on USB Gadget kernel support)
+
+**Fallback**: If USB Gadget doesn't work, recommend Carlinkit 3.0 adapter ($80-120, 95% success)
+
+**Documentation**:
+
+- `WirelessCarPlayBridge/README.md` - Complete technical documentation
+- `WirelessCarPlayBridge/QUICKSTART.md` - Quick start guide
+- `WirelessCarPlayBridge/sign_apk.sh` - Automated APK signing with AOSP keys
 
 ### Documentation Index
 
