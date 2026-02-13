@@ -2,27 +2,21 @@ package com.custom.launcher.service;
 
 import android.content.Context;
 import android.util.Log;
-import java.lang.reflect.InvocationHandler;
-import java.lang.reflect.Method;
-import java.lang.reflect.Proxy;
+import com.saicmotor.sdk.vehiclesettings.VehicleServiceContract;
+import com.saicmotor.sdk.vehiclesettings.bean.AirConditionBean;
+import com.saicmotor.sdk.vehiclesettings.manager.BaseManager;
+import com.saicmotor.sdk.vehiclesettings.manager.AirConditionManager;
 
 /**
  * Service to control and monitor vehicle heating (heated seats and steering
  * wheel)
- * using the SAIC SDK's AirConditionManager via reflection.
+ * Uses direct SDK imports (requires platform signing with android.uid.system)
  */
 public class HeatingControlService {
     private static final String TAG = "HeatingControlService";
-    private static final String LAUNCHER_PACKAGE = "com.saicmotor.hmi.hvac";
-    private static final String SDK_MANAGER_CLASS = "com.saicmotor.sdk.vehiclesettings.manager.AirConditionManager";
-    private static final String SDK_BEAN_CLASS = "com.saicmotor.sdk.vehiclesettings.bean.AirConditionBean";
-    private static final String SDK_LISTENER_CLASS = "com.saicmotor.sdk.vehiclesettings.VehicleServiceContract$IVehicleServiceListener";
-    private static final String SDK_CALLBACK_CLASS = "com.saicmotor.sdk.vehiclesettings.VehicleServiceContract$IAirConditionCallback";
 
     private final Context context;
-    private ClassLoader launcherClassLoader;
-    private Object managerInstance;
-    private Object callbackProxy;
+    private AirConditionManager managerInstance;
     private boolean isConnected = false;
     private HeatingStatusListener statusListener;
 
@@ -51,59 +45,43 @@ public class HeatingControlService {
         try {
             Log.i(TAG, "[HEATING] Initializing HeatingControlService...");
 
-            // Step 1: Load SDK classes from HVAC app package
-            Context launcherContext = context.createPackageContext(
-                    LAUNCHER_PACKAGE,
-                    Context.CONTEXT_INCLUDE_CODE);
-            launcherClassLoader = launcherContext.getClassLoader();
-            Log.i(TAG, "✓ Loaded HVAC package classloader");
+            // Create service listener
+            VehicleServiceContract.IVehicleServiceListener serviceListener = new VehicleServiceContract.IVehicleServiceListener() {
+                @Override
+                public void onServiceConnected(BaseManager manager) {
+                    Log.i(TAG, "[HEATING] ✓✓✓ Service connected! Manager: " + manager.getClass().getSimpleName());
+                    managerInstance = (AirConditionManager) manager;
+                    isConnected = true;
 
-            // Step 2: Load manager and callback classes
-            Class<Object> managerClass = (Class<Object>) launcherClassLoader.loadClass(SDK_MANAGER_CLASS);
-            Class<Object> listenerInterface = (Class<Object>) launcherClassLoader.loadClass(SDK_LISTENER_CLASS);
-            Class<Object> callbackInterface = (Class<Object>) launcherClassLoader.loadClass(SDK_CALLBACK_CLASS);
-            Log.i(TAG, "✓ Loaded SDK classes via reflection");
+                    if (statusListener != null) {
+                        statusListener.onConnectionStatusChanged(true);
+                    }
 
-            // Step 3: Create listener proxy for service connection
-            Object listenerProxy = Proxy.newProxyInstance(
-                    launcherClassLoader,
-                    new Class[] { listenerInterface },
-                    new InvocationHandler() {
-                        @Override
-                        public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-                            if ("onServiceConnected".equals(method.getName())) {
-                                Log.i(TAG, "✓ AirConditionManager service connected");
-                                managerInstance = args[0];
-                                isConnected = true;
-                                if (statusListener != null) {
-                                    statusListener.onConnectionStatusChanged(true);
-                                }
-                                // Register callback for status updates
-                                registerCallback();
-                                // Read initial status
-                                readHeatingStatus();
-                            } else if ("onServiceDisconnected".equals(method.getName())) {
-                                Log.w(TAG, "✗ AirConditionManager service disconnected");
-                                isConnected = false;
-                                if (statusListener != null) {
-                                    statusListener.onConnectionStatusChanged(false);
-                                }
-                            }
-                            return null;
-                        }
-                    });
+                    // Register callback for status updates
+                    registerCallback();
 
-            // Step 4: Initialize the manager
-            Method initMethod = managerClass.getMethod(
-                    "init",
-                    Context.class,
-                    listenerInterface,
-                    Long.TYPE);
-            initMethod.invoke(null, context, listenerProxy, 1500L);
-            Log.i(TAG, "[HEATING] ✓ AirConditionManager.init() called");
+                    // Read initial status
+                    readHeatingStatus();
+                }
+
+                @Override
+                public void onServiceDisconnected() {
+                    Log.w(TAG, "[HEATING] ✗ Service disconnected");
+                    isConnected = false;
+
+                    if (statusListener != null) {
+                        statusListener.onConnectionStatusChanged(false);
+                    }
+                }
+            };
+
+            // Initialize the SDK
+            Log.i(TAG, "[HEATING] Calling AirConditionManager.init()...");
+            AirConditionManager.init(context, serviceListener, 1500L);
+            Log.i(TAG, "[HEATING] ✓ Init called, waiting for service connection callback...");
 
         } catch (Exception e) {
-            Log.e(TAG, "[HEATING] Failed to initialize HeatingControlService: " + e.getMessage(), e);
+            Log.e(TAG, "[HEATING] Failed to initialize: " + e.getMessage(), e);
             isConnected = false;
         }
     }
@@ -118,43 +96,34 @@ public class HeatingControlService {
                 return;
             }
 
-            Class<?> callbackInterface = launcherClassLoader.loadClass(SDK_CALLBACK_CLASS);
+            // Create callback to receive heating status updates
+            VehicleServiceContract.IAirConditionCallback callback = new VehicleServiceContract.IAirConditionCallback() {
+                @Override
+                public void onAirConditionChangeEvent(AirConditionBean bean) {
+                    Log.d(TAG, "[HEATING] Air condition status changed event received");
+                    readHeatingStatusFromBean(bean);
+                }
 
-            // Create callback proxy to receive heating status updates
-            callbackProxy = Proxy.newProxyInstance(
-                    launcherClassLoader,
-                    new Class<?>[] { callbackInterface },
-                    new InvocationHandler() {
-                        @Override
-                        public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-                            String methodName = method.getName();
-
-                            // Called when air condition status changes
-                            if ("onAirConditionBeanChanged".equals(methodName) && args != null && args.length > 0) {
-                                Object airConditionBean = args[0];
-                                readHeatingStatusFromBean(airConditionBean);
-                            }
-
-                            return null;
-                        }
-                    });
+                @Override
+                public void onAirConditionErrorEvent(String error, int code) {
+                    Log.e(TAG, "[HEATING] Error: " + error + " (code: " + code + ")");
+                }
+            };
 
             // Register the callback
-            Method registerMethod = managerInstance.getClass().getMethod(
-                    "registerAirConditionCallback",
-                    callbackInterface);
-            registerMethod.invoke(managerInstance, callbackProxy);
-            Log.i(TAG, "✓ Registered AirConditionCallback for status updates");
+            managerInstance.registerAirConditionCallback(callback);
+            Log.i(TAG, "[HEATING] ✓ Registered AirConditionCallback");
 
         } catch (Exception e) {
-            Log.e(TAG, "Failed to register heating callback: " + e.getMessage(), e);
+            Log.e(TAG, "[HEATING] Failed to register callback: " + e.getMessage(), e);
         }
     }
 
     /**
      * Read current heating status from the vehicle
+     * Public so MainActivity can request immediate status after sending commands
      */
-    private void readHeatingStatus() {
+    public void readHeatingStatus() {
         try {
             if (managerInstance == null) {
                 Log.w(TAG, "Cannot read status - manager not initialized");
@@ -162,38 +131,31 @@ public class HeatingControlService {
             }
 
             // Get the AirConditionBean
-            Method getStatusMethod = managerInstance.getClass().getMethod("getAirConditionBean");
-            Object airConditionBean = getStatusMethod.invoke(managerInstance);
-
-            if (airConditionBean != null) {
-                readHeatingStatusFromBean(airConditionBean);
+            AirConditionBean bean = managerInstance.getAirConditionStatus();
+            if (bean != null) {
+                readHeatingStatusFromBean(bean);
             }
 
         } catch (Exception e) {
-            Log.e(TAG, "Failed to read heating status: " + e.getMessage(), e);
+            Log.e(TAG, "[HEATING] Failed to read status: " + e.getMessage(), e);
         }
     }
 
     /**
      * Extract heating levels from AirConditionBean
      */
-    private void readHeatingStatusFromBean(Object airConditionBean) {
+    private void readHeatingStatusFromBean(AirConditionBean bean) {
         try {
-            Class<?> beanClass = airConditionBean.getClass();
-
             // Get driver seat heating level (0-3)
-            Method getDrvSeatMethod = beanClass.getMethod("getDrvSeatHeatLevel");
-            Integer drvSeatLevel = (Integer) getDrvSeatMethod.invoke(airConditionBean);
+            Integer drvSeatLevel = bean.getDrvSeatHeatLevel();
 
             // Get passenger seat heating level (0-3)
-            Method getPsgSeatMethod = beanClass.getMethod("getPsgSeatHeatLevel");
-            Integer psgSeatLevel = (Integer) getPsgSeatMethod.invoke(airConditionBean);
+            Integer psgSeatLevel = bean.getPsgSeatHeatLevel();
 
             // Get steering wheel heating level (0 or 1)
-            Method getWheelMethod = beanClass.getMethod("getSteeringWheelHeatLevel");
-            Integer wheelLevel = (Integer) getWheelMethod.invoke(airConditionBean);
+            Integer wheelLevel = bean.getSteeringWheelHeatLevel();
 
-            Log.d(TAG, String.format("Heating status: DrvSeat=%d, PsgSeat=%d, Wheel=%d",
+            Log.d(TAG, String.format("[HEATING] Status from vehicle: DrvSeat=%d, PsgSeat=%d, Wheel=%d",
                     drvSeatLevel, psgSeatLevel, wheelLevel));
 
             // Notify listener
@@ -205,7 +167,7 @@ public class HeatingControlService {
             }
 
         } catch (Exception e) {
-            Log.e(TAG, "Failed to parse heating status from bean: " + e.getMessage(), e);
+            Log.e(TAG, "[HEATING] Failed to parse status from bean: " + e.getMessage(), e);
         }
     }
 
@@ -217,16 +179,16 @@ public class HeatingControlService {
     public void setDriverSeatHeating(int level) {
         try {
             if (managerInstance == null) {
-                Log.w(TAG, "Cannot set driver seat - manager not initialized");
+                Log.e(TAG, "[HEATING] ✗✗✗ Cannot set driver seat - manager not initialized");
                 return;
             }
 
-            Method setMethod = managerInstance.getClass().getMethod("setDrvSeatHeatLevel", Integer.TYPE);
-            setMethod.invoke(managerInstance, level);
-            Log.i(TAG, "✓ Set driver seat heating to level " + level);
+            Log.i(TAG, "[HEATING] >>> Sending driver seat heating command: level " + level);
+            managerInstance.setDrvSeatHeatLevel(level);
+            Log.i(TAG, "[HEATING] ✓ Driver seat heating command sent successfully");
 
         } catch (Exception e) {
-            Log.e(TAG, "Failed to set driver seat heating: " + e.getMessage(), e);
+            Log.e(TAG, "[HEATING] ✗✗✗ Failed to set driver seat heating: " + e.getMessage(), e);
         }
     }
 
@@ -238,16 +200,16 @@ public class HeatingControlService {
     public void setPassengerSeatHeating(int level) {
         try {
             if (managerInstance == null) {
-                Log.w(TAG, "Cannot set passenger seat - manager not initialized");
+                Log.e(TAG, "[HEATING] ✗✗✗ Cannot set passenger seat - manager not initialized");
                 return;
             }
 
-            Method setMethod = managerInstance.getClass().getMethod("setPsgSeatHeatLevel", Integer.TYPE);
-            setMethod.invoke(managerInstance, level);
-            Log.i(TAG, "✓ Set passenger seat heating to level " + level);
+            Log.i(TAG, "[HEATING] >>> Sending passenger seat heating command: level " + level);
+            managerInstance.setPsgSeatHeatLevel(level);
+            Log.i(TAG, "[HEATING] ✓ Passenger seat heating command sent successfully");
 
         } catch (Exception e) {
-            Log.e(TAG, "Failed to set passenger seat heating: " + e.getMessage(), e);
+            Log.e(TAG, "[HEATING] ✗✗✗ Failed to set passenger seat heating: " + e.getMessage(), e);
         }
     }
 
@@ -259,16 +221,16 @@ public class HeatingControlService {
     public void setSteeringWheelHeating(int level) {
         try {
             if (managerInstance == null) {
-                Log.w(TAG, "Cannot set steering wheel - manager not initialized");
+                Log.e(TAG, "[HEATING] ✗✗✗ Cannot set steering wheel - manager not initialized");
                 return;
             }
 
-            Method setMethod = managerInstance.getClass().getMethod("setSteeringWheelHeat", Integer.TYPE);
-            setMethod.invoke(managerInstance, level);
-            Log.i(TAG, "✓ Set steering wheel heating to level " + level);
+            Log.i(TAG, "[HEATING] >>> Sending steering wheel heating command: level " + level);
+            managerInstance.setSteeringWheelHeat(level);
+            Log.i(TAG, "[HEATING] ✓ Steering wheel heating command sent successfully");
 
         } catch (Exception e) {
-            Log.e(TAG, "Failed to set steering wheel heating: " + e.getMessage(), e);
+            Log.e(TAG, "[HEATING] ✗✗✗ Failed to set steering wheel heating: " + e.getMessage(), e);
         }
     }
 
@@ -277,21 +239,17 @@ public class HeatingControlService {
      */
     public void release() {
         try {
-            if (managerInstance != null && callbackProxy != null) {
-                Class<?> callbackInterface = launcherClassLoader.loadClass(SDK_CALLBACK_CLASS);
-                Method unregisterMethod = managerInstance.getClass().getMethod(
-                        "unregisterAirConditionCallback",
-                        callbackInterface);
-                unregisterMethod.invoke(managerInstance, callbackProxy);
-                Log.i(TAG, "✓ Unregistered heating callback");
+            if (managerInstance != null) {
+                // Note: The unregister method should be called if available
+                // For now, just cleanup the reference
+                Log.i(TAG, "[HEATING] ✓ Releasing heating service");
             }
 
             managerInstance = null;
-            callbackProxy = null;
             isConnected = false;
 
         } catch (Exception e) {
-            Log.e(TAG, "Failed to release heating service: " + e.getMessage(), e);
+            Log.e(TAG, "[HEATING] Failed to release: " + e.getMessage(), e);
         }
     }
 }

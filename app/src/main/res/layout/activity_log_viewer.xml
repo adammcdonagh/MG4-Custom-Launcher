@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@color/background_dark"
+    android:padding="16dp">
+
+    <!-- Header -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingBottom="16dp">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Debug Logs"
+            android:textSize="24sp"
+            android:textColor="@color/text_primary"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/btnPauseLogs"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Pause"
+            android:textSize="14sp"
+            android:layout_marginEnd="8dp"
+            android:backgroundTint="@color/battery_yellow" />
+
+        <Button
+            android:id="@+id/btnRefreshLogs"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Refresh"
+            android:textSize="14sp"
+            android:layout_marginEnd="8dp"
+            android:backgroundTint="@color/colorPrimary" />
+
+        <Button
+            android:id="@+id/btnClearLogs"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Clear"
+            android:textSize="14sp"
+            android:layout_marginEnd="8dp"
+            android:backgroundTint="@color/colorAccent" />
+
+        <Button
+            android:id="@+id/btnSaveLogs"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Save to USB"
+            android:textSize="14sp"
+            android:layout_marginEnd="8dp"
+            android:backgroundTint="@color/battery_green" />
+
+        <Button
+            android:id="@+id/btnClose"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Close"
+            android:textSize="14sp"
+            android:backgroundTint="@color/text_tertiary" />
+    </LinearLayout>
+
+    <!-- Log viewer -->
+    <ScrollView
+        android:id="@+id/logScrollView"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:background="@color/card_background"
+        android:padding="12dp">
+
+        <TextView
+            android:id="@+id/logText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Loading logs..."
+            android:textColor="@color/text_secondary"
+            android:textSize="12sp"
+            android:fontFamily="monospace"
+            android:textIsSelectable="true" />
+    </ScrollView>
+
+    <!-- Action buttons at bottom -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center"
+        android:paddingTop="16dp">
+
+        <Button
+            android:id="@+id/btnUsbDebug"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="USB/ADB Detail"
+            android:textSize="14sp"
+            android:backgroundTint="@color/colorPrimary" />
+    </LinearLayout>
+
+</LinearLayout>

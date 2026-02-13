@@ -182,3 +182,5 @@ fabric.properties
 # Firmware directory - keep directory but ignore contents
 mg_firmware/*
 !mg_firmware/.gitkeep
+!mg_firmware/*.sh
+sdk_extraction

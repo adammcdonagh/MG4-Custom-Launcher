@@ -131,10 +131,12 @@ public class MediaListenerService extends NotificationListenerService {
 
                 if (artUriString != null && !artUriString.equals(lastFailedArtUri)) {
                     try {
-                        // Log the original URI for debugging (using INFO level to ensure visibility)
-                        Log.i(TAG, "=== ALBUM ART DEBUG ===");
-                        Log.i(TAG, "Original URI string: [" + artUriString + "]");
-                        Log.i(TAG, "URI length: " + artUriString.length());
+                        // Only log when track changes to avoid spam
+                        if (trackChanged) {
+                            Log.i(TAG, "=== ALBUM ART DEBUG ===");
+                            Log.i(TAG, "Original URI string: [" + artUriString + "]");
+                            Log.i(TAG, "URI length: " + artUriString.length());
+                        }
 
                         Uri artUri;
                         String cleanPath = artUriString;
@@ -143,11 +145,15 @@ public class MediaListenerService extends NotificationListenerService {
                         try {
                             String decoded = URLDecoder.decode(artUriString, "UTF-8");
                             if (!decoded.equals(artUriString)) {
-                                Log.i(TAG, "After URL decode: [" + decoded + "]");
+                                if (trackChanged) {
+                                    Log.i(TAG, "After URL decode: [" + decoded + "]");
+                                }
                                 cleanPath = decoded;
                             }
                         } catch (UnsupportedEncodingException e) {
-                            Log.w(TAG, "Failed to URL decode: " + e.getMessage());
+                            if (trackChanged) {
+                                Log.w(TAG, "Failed to URL decode: " + e.getMessage());
+                            }
                         }
 
                         // Fix malformed Bluetooth paths with extra spaces
@@ -156,32 +162,46 @@ public class MediaListenerService extends NotificationListenerService {
                         if (cleanPath.contains("bluetooth/") && cleanPath.contains(": ")) {
                             String fixed = cleanPath.replaceAll(": ", ":");
                             if (!fixed.equals(cleanPath)) {
-                                Log.i(TAG, "Fixed Bluetooth path spaces: [" + fixed + "]");
+                                if (trackChanged) {
+                                    Log.i(TAG, "Fixed Bluetooth path spaces: [" + fixed + "]");
+                                }
                                 cleanPath = fixed;
                             }
                         }
 
-                        Log.i(TAG, "Final path to use: [" + cleanPath + "]");
+                        if (trackChanged) {
+                            Log.i(TAG, "Final path to use: [" + cleanPath + "]");
+                        }
 
                         // Check if it's a file path that needs conversion
                         if (cleanPath.startsWith("/")) {
                             // Convert absolute file path to file:// URI
                             artUri = Uri.parse("file://" + cleanPath);
-                            Log.i(TAG, "Created file:// URI: " + artUri);
+                            if (trackChanged) {
+                                Log.i(TAG, "Created file:// URI: " + artUri);
+                            }
                         } else {
                             artUri = Uri.parse(cleanPath);
-                            Log.i(TAG, "Parsed as URI: " + artUri);
+                            if (trackChanged) {
+                                Log.i(TAG, "Parsed as URI: " + artUri);
+                            }
                         }
 
                         // Try multiple methods to load the bitmap
                         try {
                             // Method 1: ContentResolver (works for content:// URIs)
-                            Log.i(TAG, "Attempt 1: ContentResolver.openInputStream()");
+                            if (trackChanged) {
+                                Log.i(TAG, "Attempt 1: ContentResolver.openInputStream()");
+                            }
                             ContentResolver resolver = getContentResolver();
                             albumArt = BitmapFactory.decodeStream(resolver.openInputStream(artUri));
-                            Log.i(TAG, "✓✓ SUCCESS via ContentResolver");
+                            if (trackChanged) {
+                                Log.i(TAG, "✓✓ SUCCESS via ContentResolver");
+                            }
                         } catch (Exception e1) {
-                            Log.i(TAG, "ContentResolver failed: " + e1.getMessage());
+                            if (trackChanged) {
+                                Log.i(TAG, "ContentResolver failed: " + e1.getMessage());
+                            }
 
                             try {
                                 // Method 2: Direct file path (for file:// URIs)
@@ -231,10 +251,12 @@ public class MediaListenerService extends NotificationListenerService {
                                 Log.w(TAG, "✗ Failed to load album art from URI after all attempts: " + artUriString);
                             }
                             lastFailedArtUri = artUriString;
-                        } else {
+                        } else if (trackChanged) {
                             Log.i(TAG, "Album art loaded: " + albumArt.getWidth() + "x" + albumArt.getHeight());
                         }
-                        Log.i(TAG, "======================");
+                        if (trackChanged) {
+                            Log.i(TAG, "======================");
+                        }
                     } catch (Exception e) {
                         if (trackChanged) {
                             LogUtils.logWarning(TAG, "✗ Exception loading album art from URI: " + artUriString, e);
@@ -247,13 +269,13 @@ public class MediaListenerService extends NotificationListenerService {
                 // Fallback to embedded bitmaps if URI loading fails
                 if (albumArt == null) {
                     albumArt = metadata.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART);
-                    if (albumArt != null) {
+                    if (albumArt != null && trackChanged) {
                         Log.i(TAG, "✓ Using embedded METADATA_KEY_ALBUM_ART");
                     }
                 }
                 if (albumArt == null) {
                     albumArt = metadata.getBitmap(MediaMetadata.METADATA_KEY_ART);
-                    if (albumArt != null) {
+                    if (albumArt != null && trackChanged) {
                         Log.i(TAG, "✓ Using embedded METADATA_KEY_ART");
                     }
                 }

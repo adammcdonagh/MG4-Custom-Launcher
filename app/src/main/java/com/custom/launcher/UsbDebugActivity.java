@@ -6,10 +6,13 @@ import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 import android.view.View;
+import android.widget.Button;
 import android.widget.ImageView;
+import android.widget.ScrollView;
 import android.widget.TableLayout;
 import android.widget.TableRow;
 import android.widget.TextView;
+import android.widget.Toast;
 import androidx.cardview.widget.CardView;
 import java.io.BufferedReader;
 import java.io.File;
@@ -24,18 +27,44 @@ public class UsbDebugActivity extends Activity {
     private Runnable refreshRunnable;
     private boolean isRefreshing = false;
 
+    // Tab views
+    private ScrollView usbTab;
+    private ScrollView adbTab;
+    private Button btnUsbTab;
+    private Button btnAdbTab;
+    private TextView adbStatusText;
+    private Button btnEnableAdb;
+    private Button btnRefreshAdb;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_usb_debug);
 
+        // Find views
         debugTable = findViewById(R.id.debugTable);
         ImageView backButton = findViewById(R.id.iv_back);
+        usbTab = findViewById(R.id.usbTab);
+        adbTab = findViewById(R.id.adbTab);
+        btnUsbTab = findViewById(R.id.btnUsbTab);
+        btnAdbTab = findViewById(R.id.btnAdbTab);
+        adbStatusText = findViewById(R.id.adbStatusText);
+        btnEnableAdb = findViewById(R.id.btnEnableAdb);
+        btnRefreshAdb = findViewById(R.id.btnRefreshAdb);
 
         backButton.setOnClickListener(v -> finish());
 
+        // Tab switching
+        btnUsbTab.setOnClickListener(v -> showUsbTab());
+        btnAdbTab.setOnClickListener(v -> showAdbTab());
+
+        // ADB tab buttons
+        btnEnableAdb.setOnClickListener(v -> attemptEnableAdb());
+        btnRefreshAdb.setOnClickListener(v -> updateAdbDiagnostics());
+
         // Initial load
         loadDebugInfo();
+        showUsbTab(); // Start on USB tab
 
         // Auto-refresh every 2 seconds
         refreshHandler = new Handler(Looper.getMainLooper());
@@ -48,6 +77,21 @@ public class UsbDebugActivity extends Activity {
                 }
             }
         };
+    }
+
+    private void showUsbTab() {
+        usbTab.setVisibility(View.VISIBLE);
+        adbTab.setVisibility(View.GONE);
+        btnUsbTab.setBackgroundColor(0xFF555555);
+        btnAdbTab.setBackgroundColor(0xFF333333);
+    }
+
+    private void showAdbTab() {
+        usbTab.setVisibility(View.GONE);
+        adbTab.setVisibility(View.VISIBLE);
+        btnUsbTab.setBackgroundColor(0xFF333333);
+        btnAdbTab.setBackgroundColor(0xFF555555);
+        updateAdbDiagnostics();
     }
 
     @Override
@@ -310,5 +354,230 @@ public class UsbDebugActivity extends Activity {
         }
 
         return value;
+    }
+
+    /**
+     * Update ADB diagnostics display
+     */
+    private void updateAdbDiagnostics() {
+        new Thread(() -> {
+            try {
+                StringBuilder diag = new StringBuilder();
+                diag.append("=== ADB DIAGNOSTICS ===\n\n");
+
+                // Check ADB status via Settings
+                String adbEnabled = "unknown";
+                try {
+                    int adb = android.provider.Settings.Global.getInt(getContentResolver(),
+                            android.provider.Settings.Global.ADB_ENABLED);
+                    adbEnabled = adb == 1 ? "ENABLED" : "DISABLED";
+                } catch (Exception e) {
+                    adbEnabled = "error: " + e.getMessage();
+                }
+                diag.append("ADB Settings: ").append(adbEnabled).append("\n");
+
+                // Check USB configuration
+                String usbConfig = getSystemProperty("sys.usb.config");
+                diag.append("USB Config: ").append(usbConfig).append("\n");
+                diag.append("Has ADB: ").append(usbConfig != null && usbConfig.contains("adb") ? "YES" : "NO")
+                        .append("\n");
+
+                // Check persist config
+                String persistConfig = getSystemProperty("persist.sys.usb.config");
+                diag.append("Persist Config: ").append(persistConfig).append("\n");
+
+                // Check USB state
+                String usbState = getSystemProperty("sys.usb.state");
+                diag.append("USB State: ").append(usbState).append("\n");
+
+                // Check adbd service
+                String adbdService = getSystemProperty("init.svc.adbd");
+                diag.append("adbd Service: ").append(adbdService).append("\n\n");
+
+                // Check SELinux status
+                diag.append("=== SELINUX STATUS ===\n");
+                String selinux = getSystemProperty("ro.build.selinux");
+                diag.append("SELinux Build: ").append(selinux).append("\n");
+                try {
+                    Process getenforce = Runtime.getRuntime().exec("getenforce");
+                    BufferedReader reader = new BufferedReader(
+                            new java.io.InputStreamReader(getenforce.getInputStream()));
+                    String mode = reader.readLine();
+                    diag.append("Current Mode: ").append(mode != null ? mode : "unknown").append("\n");
+                    reader.close();
+                    getenforce.destroy();
+                } catch (Exception e) {
+                    diag.append("Cannot check enforce: ").append(e.getMessage()).append("\n");
+                }
+                diag.append("\n");
+
+                // Check system security
+                diag.append("=== SYSTEM SECURITY ===\n");
+                diag.append("ro.secure: ").append(getSystemProperty("ro.secure")).append("\n");
+                diag.append("ro.adb.secure: ").append(getSystemProperty("ro.adb.secure")).append("\n");
+                diag.append("ro.debuggable: ").append(getSystemProperty("ro.debuggable")).append("\n");
+
+                String finalDiag = diag.toString();
+                final String finalAdbEnabled = adbEnabled;
+                final String finalUsbConfig = usbConfig;
+                runOnUiThread(() -> {
+                    if (adbStatusText != null) {
+                        adbStatusText.setText(finalDiag);
+                        // Update button text based on ADB status
+                        if (btnEnableAdb != null) {
+                            if (finalAdbEnabled.equals("ENABLED") && finalUsbConfig != null
+                                    && finalUsbConfig.contains("adb")) {
+                                btnEnableAdb.setText("ADB Active");
+                                btnEnableAdb.setEnabled(false);
+                            } else {
+                                btnEnableAdb.setText("Enable ADB");
+                                btnEnableAdb.setEnabled(true);
+                            }
+                        }
+                    }
+                });
+
+            } catch (Exception e) {
+                Log.e(TAG, "Error updating ADB diagnostics", e);
+                runOnUiThread(() -> {
+                    if (adbStatusText != null) {
+                        adbStatusText.setText("Error loading diagnostics: " + e.getMessage());
+                    }
+                });
+            }
+        }).start();
+    }
+
+    /**
+     * Attempt to enable ADB using multiple approaches
+     */
+    private void attemptEnableAdb() {
+        if (btnEnableAdb != null) {
+            btnEnableAdb.setEnabled(false);
+            btnEnableAdb.setText("Enabling...");
+        }
+
+        new Thread(() -> {
+            StringBuilder result = new StringBuilder();
+            result.append("=== ATTEMPTING TO ENABLE ADB ===\n\n");
+
+            int successCount = 0;
+            int totalAttempts = 0;
+
+            // Approach 1: Enable ADB via Settings.Global
+            totalAttempts++;
+            result.append("[1] Settings.Global.ADB_ENABLED...\n");
+            try {
+                android.provider.Settings.Global.putInt(getContentResolver(),
+                        android.provider.Settings.Global.ADB_ENABLED, 1);
+                int check = android.provider.Settings.Global.getInt(getContentResolver(),
+                        android.provider.Settings.Global.ADB_ENABLED);
+                if (check == 1) {
+                    result.append("✓ SUCCESS: ADB enabled in settings\n\n");
+                    successCount++;
+                } else {
+                    result.append("✗ FAILED: Setting did not persist\n\n");
+                }
+            } catch (Exception e) {
+                result.append("✗ FAILED: ").append(e.getMessage()).append("\n\n");
+            }
+
+            // Approach 2: Set USB configuration to include ADB
+            totalAttempts++;
+            result.append("[2] SystemProperties: persist.sys.usb.config...\n");
+            try {
+                String currentConfig = getSystemProperty("persist.sys.usb.config");
+                String newConfig = currentConfig != null && !currentConfig.isEmpty()
+                        ? (currentConfig.contains("adb") ? currentConfig : currentConfig + ",adb")
+                        : "mtp,adb";
+                setSystemProperty("persist.sys.usb.config", newConfig);
+                Thread.sleep(500);
+                String check = getSystemProperty("persist.sys.usb.config");
+                if (check != null && check.contains("adb")) {
+                    result.append("✓ SUCCESS: USB config set to ").append(check).append("\n\n");
+                    successCount++;
+                } else {
+                    result.append("✗ FAILED: Property did not change\n\n");
+                }
+            } catch (Exception e) {
+                result.append("✗ FAILED: ").append(e.getMessage()).append("\n\n");
+            }
+
+            // Approach 3: Alternative port
+            totalAttempts++;
+            result.append("[3] Alternative ADB port (bypass firewall)...\n");
+            int altPort = 0;
+            try {
+                // Try alternative ports: 5556, 5557, 5558
+                for (int port : new int[] { 5556, 5557, 5558 }) {
+                    setSystemProperty("service.adb.tcp.port", String.valueOf(port));
+                    Thread.sleep(500);
+                    String check = getSystemProperty("service.adb.tcp.port");
+                    if (String.valueOf(port).equals(check)) {
+                        altPort = port;
+                        break;
+                    }
+                }
+
+                if (altPort > 0) {
+                    setSystemProperty("ctl.restart", "adbd");
+                    Thread.sleep(1000);
+                    result.append("✓ SUCCESS: ADB listening on port ").append(altPort).append("\n\n");
+                    successCount++;
+                } else {
+                    result.append("✗ FAILED: Could not set alternative port\n\n");
+                }
+            } catch (Exception e) {
+                result.append("✗ FAILED: ").append(e.getMessage()).append("\n\n");
+            }
+
+            // Summary
+            result.append("===========================\n");
+            result.append("SUMMARY: ").append(successCount).append("/").append(totalAttempts)
+                    .append(" approaches succeeded\n\n");
+
+            if (successCount > 0) {
+                result.append("✓ Some methods succeeded!\n");
+                if (altPort > 0) {
+                    result.append("Try connecting with:\n");
+                    result.append("  adb connect <car-ip>:").append(altPort).append("\n\n");
+                }
+            } else {
+                result.append("✗ All methods failed.\n");
+                result.append("Possible causes:\n");
+                result.append("• SELinux blocking modifications\n");
+                result.append("• Vendor-specific security policies\n");
+                result.append("• Need root access\n\n");
+            }
+
+            String finalResult = result.toString();
+            final int finalSuccessCount = successCount;
+            runOnUiThread(() -> {
+                if (adbStatusText != null) {
+                    adbStatusText.setText(finalResult);
+                }
+                if (btnEnableAdb != null) {
+                    btnEnableAdb.setEnabled(true);
+                    btnEnableAdb.setText(finalSuccessCount > 0 ? "Try Again" : "Enable ADB");
+                }
+                Toast.makeText(UsbDebugActivity.this,
+                        finalSuccessCount > 0 ? "Some methods succeeded!" : "All methods failed",
+                        Toast.LENGTH_LONG).show();
+
+                // Refresh diagnostics after 2 seconds
+                new Handler(Looper.getMainLooper()).postDelayed(() -> updateAdbDiagnostics(), 2000);
+            });
+
+        }).start();
+    }
+
+    /**
+     * Set system property via reflection
+     */
+    private void setSystemProperty(String key, String value) throws Exception {
+        Class<?> systemProperties = Class.forName("android.os.SystemProperties");
+        Method set = systemProperties.getMethod("set", String.class, String.class);
+        set.invoke(null, key, value);
+        Log.i(TAG, "Set system property: " + key + " = " + value);
     }
 }

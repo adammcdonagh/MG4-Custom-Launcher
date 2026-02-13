@@ -14,6 +14,21 @@ android {
         versionName "1.0"
     }
 
+    flavorDimensions "deployment"
+    productFlavors {
+        emulator {
+            dimension "deployment"
+            versionNameSuffix "-emulator"
+            // No sharedUserId for emulator - uses regular debug signing
+        }
+        car {
+            dimension "deployment"
+            versionNameSuffix "-car"
+            // Manifest will have sharedUserId for car builds
+            // Sign with platform keys using: ./sign_apk.sh car
+        }
+    }
+
     buildTypes {
         release {
             minifyEnabled false

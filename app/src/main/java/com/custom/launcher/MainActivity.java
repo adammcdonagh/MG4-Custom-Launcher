@@ -16,7 +16,10 @@ import android.os.Looper;
 import android.provider.Settings;
 import android.text.TextUtils;
 import android.util.Log;
+import android.view.ContextMenu;
 import android.view.KeyEvent;
+import android.view.Menu;
+import android.view.MenuItem;
 import android.view.View;
 import android.widget.ImageButton;
 import android.widget.ImageView;
@@ -115,10 +118,9 @@ public class MainActivity extends AppCompatActivity {
     private int clockTapCount = 0;
     private long lastClockTapTime = 0;
     private static final long TAP_TIMEOUT = 500; // ms between taps
-    private AlertDialog debugDialog = null;
-    private Handler debugHandler;
-    private Runnable logReaderRunnable;
-    private boolean showingSaicLogs = false;
+    // Debug dialog removed - now using LogViewerActivity full-screen
+    private TextView adbStatusView;
+    private android.widget.Button enableAdbButton;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -258,9 +260,10 @@ public class MainActivity extends AppCompatActivity {
         // Setup debug triple-tap on clock
         timeText.setOnClickListener(v -> handleClockTap());
 
-        // Long press on clock to open USB debug screen
+        // Long press on clock to show context menu
+        registerForContextMenu(timeText);
         timeText.setOnLongClickListener(v -> {
-            openUsbDebugScreen();
+            v.showContextMenu();
             return true;
         });
 
@@ -384,69 +387,107 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    private void openShellActivity() {
+        try {
+            Log.i(TAG, "Opening Shell Command Interface...");
+            Intent intent = new Intent(this, ShellActivity.class);
+            startActivity(intent);
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to open Shell Activity: " + e.getMessage());
+            Toast.makeText(this, "Error opening shell", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void openLogViewer() {
+        try {
+            Log.i(TAG, "Opening Log Viewer...");
+            Intent intent = new Intent(this, LogViewerActivity.class);
+            startActivity(intent);
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to open Log Viewer: " + e.getMessage());
+            Toast.makeText(this, "Error opening log viewer", Toast.LENGTH_SHORT).show();
+        }
+    }
+
     /**
      * Heating control methods
      * Seats have 3 levels (off -> 3 -> 2 -> 1 -> off)
      * Wheel is binary (off -> on -> off)
      */
     private void toggleLeftSeat() {
+        // Calculate next level: Off -> High (3) -> Medium (2) -> Low (1) -> Off
+        int nextLevel;
         if (leftSeatLevel == 0) {
-            // Off -> Level 3
-            leftSeatLevel = 3;
+            nextLevel = 3; // Off -> High
         } else if (leftSeatLevel == 3) {
-            // Level 3 -> Level 2
-            leftSeatLevel = 2;
+            nextLevel = 2; // High -> Medium
         } else if (leftSeatLevel == 2) {
-            // Level 2 -> Level 1
-            leftSeatLevel = 1;
+            nextLevel = 1; // Medium -> Low
         } else {
-            // Level 1 -> Off
-            leftSeatLevel = 0;
+            nextLevel = 0; // Low -> Off
         }
-        updateSeatDisplay(leftSeatIcon, leftSeatLevel);
-        Log.i(TAG, "Left seat heating: Level " + leftSeatLevel);
 
-        // Send command to vehicle heating system
+        // Update UI immediately (optimistic)
+        leftSeatLevel = nextLevel;
+        updateSeatDisplay(leftSeatIcon, leftSeatLevel);
+
+        // SAIC API is inverted: API 1=High, 2=Med, 3=Low
+        int vehicleLevel = (nextLevel == 0) ? 0 : (4 - nextLevel);
+        Log.i(TAG, String.format("Left seat: UI level %d -> Vehicle API level %d", nextLevel, vehicleLevel));
+
+        // Send command to vehicle
         if (heatingControlService != null && heatingControlService.isConnected()) {
-            heatingControlService.setDriverSeatHeating(leftSeatLevel);
+            heatingControlService.setDriverSeatHeating(vehicleLevel);
         } else {
             Log.w(TAG, "Heating service not connected, command not sent");
         }
     }
 
     private void toggleRightSeat() {
+        // Calculate next level: Off -> High (3) -> Medium (2) -> Low (1) -> Off
+        int nextLevel;
         if (rightSeatLevel == 0) {
-            // Off -> Level 3
-            rightSeatLevel = 3;
+            nextLevel = 3; // Off -> High
         } else if (rightSeatLevel == 3) {
-            // Level 3 -> Level 2
-            rightSeatLevel = 2;
+            nextLevel = 2; // High -> Medium
         } else if (rightSeatLevel == 2) {
-            // Level 2 -> Level 1
-            rightSeatLevel = 1;
+            nextLevel = 1; // Medium -> Low
         } else {
-            // Level 1 -> Off
-            rightSeatLevel = 0;
+            nextLevel = 0; // Low -> Off
         }
-        updateSeatDisplay(rightSeatIcon, rightSeatLevel);
-        Log.i(TAG, "Right seat heating: Level " + rightSeatLevel);
 
-        // Send command to vehicle heating system
+        // Update UI immediately (optimistic)
+        rightSeatLevel = nextLevel;
+        updateSeatDisplay(rightSeatIcon, rightSeatLevel);
+
+        // SAIC API is inverted: API 1=High, 2=Med, 3=Low
+        int vehicleLevel = (nextLevel == 0) ? 0 : (4 - nextLevel);
+        Log.i(TAG, String.format("Right seat: UI level %d -> Vehicle API level %d", nextLevel, vehicleLevel));
+
+        // Send command to vehicle
         if (heatingControlService != null && heatingControlService.isConnected()) {
-            heatingControlService.setPassengerSeatHeating(rightSeatLevel);
+            heatingControlService.setPassengerSeatHeating(vehicleLevel);
         } else {
             Log.w(TAG, "Heating service not connected, command not sent");
         }
     }
 
     private void toggleWheel() {
-        wheelHeating = !wheelHeating;
-        updateWheelDisplay();
-        Log.i(TAG, "Steering wheel heating: " + (wheelHeating ? "ON" : "OFF"));
+        // Toggle state: OFF (false) <-> ON (true)
+        boolean nextState = !wheelHeating;
+        int nextLevel = nextState ? 1 : 0;
 
-        // Send command to vehicle heating system
+        // Update UI immediately (optimistic)
+        wheelHeating = nextState;
+        updateWheelDisplay();
+        Log.i(TAG, String.format("Steering wheel heating: %s -> %s (sending level %d)",
+                !nextState ? "OFF" : "ON",
+                nextState ? "ON" : "OFF",
+                nextLevel));
+
+        // Send command to vehicle
         if (heatingControlService != null && heatingControlService.isConnected()) {
-            heatingControlService.setSteeringWheelHeating(wheelHeating ? 1 : 0);
+            heatingControlService.setSteeringWheelHeating(nextLevel);
         } else {
             Log.w(TAG, "Heating service not connected, command not sent");
         }
@@ -554,15 +595,16 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onHeatingStatusChanged(int drvSeatLevel, int psgSeatLevel, int wheelLevel) {
                 // Update UI with actual vehicle heating status
+                // SAIC API is inverted: API 1=High, 2=Med, 3=Low, so invert for UI
                 runOnUiThread(() -> {
-                    leftSeatLevel = drvSeatLevel;
-                    rightSeatLevel = psgSeatLevel;
+                    leftSeatLevel = (drvSeatLevel == 0) ? 0 : (4 - drvSeatLevel);
+                    rightSeatLevel = (psgSeatLevel == 0) ? 0 : (4 - psgSeatLevel);
                     wheelHeating = (wheelLevel > 0);
                     updateSeatDisplay(leftSeatIcon, leftSeatLevel);
                     updateSeatDisplay(rightSeatIcon, rightSeatLevel);
                     updateWheelDisplay();
-                    Log.d(TAG, String.format("Heating status updated: L=%d R=%d W=%d",
-                            drvSeatLevel, psgSeatLevel, wheelLevel));
+                    Log.d(TAG, String.format("Heating status from vehicle: L_API=%d->UI=%d, R_API=%d->UI=%d, W=%d",
+                            drvSeatLevel, leftSeatLevel, psgSeatLevel, rightSeatLevel, wheelLevel));
                 });
             }
 
@@ -855,14 +897,7 @@ public class MainActivity extends AppCompatActivity {
         if (retryHandler != null && retryRunnable != null) {
             retryHandler.removeCallbacks(retryRunnable);
         }
-
-        if (debugHandler != null && logReaderRunnable != null) {
-            debugHandler.removeCallbacks(logReaderRunnable);
-        }
-
-        if (debugDialog != null && debugDialog.isShowing()) {
-            debugDialog.dismiss();
-        }
+        // Debug dialog removed - LogViewerActivity handles its own lifecycle
     }
 
     @Override
@@ -895,318 +930,375 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * Show debug dialog with live log output
+     * Show debug log viewer in full-screen activity (triple-tap clock to activate)
      */
     private void showDebugDialog() {
-        if (debugDialog != null && debugDialog.isShowing()) {
-            return;
-        }
-
-        // Log screen DPI and resolution for debugging
-        android.util.DisplayMetrics displayMetrics = new android.util.DisplayMetrics();
-        getWindowManager().getDefaultDisplay().getMetrics(displayMetrics);
-
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("Debug Logs - Custom Launcher");
-
-        // Create TextView for log output
-        TextView logView = new TextView(this);
-        logView.setTextSize(10);
-        logView.setTypeface(android.graphics.Typeface.MONOSPACE);
-        logView.setPadding(20, 20, 20, 20);
-        logView.setTextIsSelectable(true);
-        logView.setText("Loading logs...\n");
-
-        // Wrap in ScrollView
-        android.widget.ScrollView scrollView = new android.widget.ScrollView(this);
-        scrollView.addView(logView);
-
-        // Add buttons for scrolling and saving
-        android.widget.LinearLayout buttonRow = new android.widget.LinearLayout(this);
-        buttonRow.setOrientation(android.widget.LinearLayout.HORIZONTAL);
-        buttonRow.setPadding(10, 10, 10, 10);
-
-        android.widget.Button scrollToBottomButton = new android.widget.Button(this);
-        scrollToBottomButton.setText("Scroll to Bottom");
-        scrollToBottomButton.setOnClickListener(v -> scrollView.post(() -> scrollView.fullScroll(View.FOCUS_DOWN)));
-
-        android.widget.Button saveToUsbButton = new android.widget.Button(this);
-        saveToUsbButton.setText("Save to USB");
-        saveToUsbButton.setOnClickListener(v -> saveLogsToUsb(logView.getText().toString()));
-
-        // Equal width for both buttons
-        android.widget.LinearLayout.LayoutParams buttonParams = new android.widget.LinearLayout.LayoutParams(
-                0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
-        buttonParams.setMargins(5, 0, 5, 0);
-        buttonRow.addView(scrollToBottomButton, buttonParams);
-        buttonRow.addView(saveToUsbButton, buttonParams);
-
-        // Use a vertical LinearLayout to hold the ScrollView and buttons
-        android.widget.LinearLayout container = new android.widget.LinearLayout(this);
-        container.setOrientation(android.widget.LinearLayout.VERTICAL);
-        container.addView(scrollView, new android.widget.LinearLayout.LayoutParams(
-                android.widget.LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
-        container.addView(buttonRow, new android.widget.LinearLayout.LayoutParams(
-                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
-                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT));
-
-        builder.setView(container);
-        builder.setPositiveButton("Close", (dialog, which) -> {
-            if (debugHandler != null && logReaderRunnable != null) {
-                debugHandler.removeCallbacks(logReaderRunnable);
-            }
-            showingSaicLogs = false;
-            dialog.dismiss();
-        });
-
-        builder.setNeutralButton("Switch Logs", null); // Set listener after creation
-
-        builder.setNegativeButton("Clear", (dialog, which) -> {
-            try {
-                // Clear logcat
-                Process process = Runtime.getRuntime().exec("logcat -c");
-                process.waitFor();
-                logView.setText("Logs cleared.\n");
-            } catch (Exception e) {
-                logView.setText("Failed to clear logs: " + e.getMessage() + "\n");
-            }
-        });
-
-        debugDialog = builder.create();
-        debugDialog.show();
-
-        // Set custom click listener for neutral button to prevent dialog from closing
-        android.widget.Button switchButton = debugDialog.getButton(AlertDialog.BUTTON_NEUTRAL);
-        if (switchButton != null) {
-            switchButton.setOnClickListener(v -> {
-                // Stop current log reader
-                if (debugHandler != null && logReaderRunnable != null) {
-                    debugHandler.removeCallbacks(logReaderRunnable);
-                }
-
-                // Toggle log source
-                showingSaicLogs = !showingSaicLogs;
-
-                // Update title
-                debugDialog.setTitle(showingSaicLogs ? "Debug Logs - SAIC Launcher" : "Debug Logs - Custom Launcher");
-
-                // Clear display and restart log reader
-                logView.setText("Loading logs...\n");
-                startLogReader(logView, scrollView);
-            });
-        }
-
-        // Set dialog window size to 90% width, 90% height after showing
-        android.view.Window window = debugDialog.getWindow();
-        if (window != null) {
-            int screenWidth = displayMetrics.widthPixels;
-            int screenHeight = displayMetrics.heightPixels;
-            window.setLayout(
-                    (int) (screenWidth * 0.90),
-                    (int) (screenHeight * 0.90));
-        }
-
-        // Start log reader
-        startLogReader(logView, scrollView);
+        Intent intent = new Intent(MainActivity.this, LogViewerActivity.class);
+        startActivity(intent);
     }
 
     /**
-     * Save logs to USB drive
+     * Update ADB diagnostics display
      */
-    private void saveLogsToUsb(String logs) {
+    private void updateAdbDiagnostics() {
         new Thread(() -> {
             try {
-                // Common USB mount points on Android
-                String[] usbPaths = {
-                        "/storage/udisk0",
-                        "/storage/usbotg",
-                        "/mnt/usb_storage",
-                        "/mnt/media_rw/USB_DISK",
-                        "/mnt/usb",
-                        "/storage/usbdisk",
-                        "/mnt/usbhost"
-                };
+                StringBuilder diag = new StringBuilder();
+                diag.append("=== ADB DIAGNOSTICS ===").append("\n\n");
 
-                File usbDir = null;
-                for (String path : usbPaths) {
-                    File dir = new File(path);
-                    if (dir.exists() && dir.canWrite()) {
-                        usbDir = dir;
-                        Log.i(TAG, "Found writable USB at: " + path);
+                // Check ADB status via Settings
+                String adbEnabled = "unknown";
+                try {
+                    int adb = Settings.Global.getInt(getContentResolver(), Settings.Global.ADB_ENABLED);
+                    adbEnabled = adb == 1 ? "ENABLED" : "DISABLED";
+                } catch (Exception e) {
+                    adbEnabled = "error: " + e.getMessage();
+                }
+                diag.append("ADB Settings: ").append(adbEnabled).append("\n");
+
+                // Check USB configuration
+                String usbConfig = getSystemProperty("sys.usb.config");
+                diag.append("USB Config: ").append(usbConfig).append("\n");
+                diag.append("Has ADB: ").append(usbConfig != null && usbConfig.contains("adb") ? "YES" : "NO")
+                        .append("\n");
+
+                // Check persist config
+                String persistConfig = getSystemProperty("persist.sys.usb.config");
+                diag.append("Persist Config: ").append(persistConfig).append("\n");
+
+                // Check USB state
+                String usbState = getSystemProperty("sys.usb.state");
+                diag.append("USB State: ").append(usbState).append("\n");
+
+                // Check adbd service
+                String adbdService = getSystemProperty("init.svc.adbd");
+                diag.append("adbd Service: ").append(adbdService).append("\n\n");
+
+                // Check network interfaces
+                diag.append("=== NETWORK INTERFACES ===").append("\n");
+                Process ifconfig = Runtime.getRuntime().exec("ip addr show");
+                java.io.BufferedReader reader = new java.io.BufferedReader(
+                        new java.io.InputStreamReader(ifconfig.getInputStream()));
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    if (line.contains("usb") || line.contains("inet ")) {
+                        diag.append(line.trim()).append("\n");
+                    }
+                }
+                reader.close();
+                ifconfig.destroy();
+                diag.append("\n");
+
+                // Check iptables rules (may require root)
+                diag.append("=== IPTABLES RULES ===").append("\n");
+                try {
+                    Process iptables = Runtime.getRuntime().exec(new String[] { "iptables", "-L", "INPUT", "-n" });
+                    reader = new java.io.BufferedReader(
+                            new java.io.InputStreamReader(iptables.getInputStream()));
+                    boolean foundAdb = false;
+                    while ((line = reader.readLine()) != null) {
+                        if (line.contains("5555") || line.contains("adb")) {
+                            diag.append(line.trim()).append("\n");
+                            foundAdb = true;
+                        }
+                    }
+                    if (!foundAdb) {
+                        diag.append("No ADB-related rules found\n");
+                    }
+                    reader.close();
+                    iptables.destroy();
+                } catch (Exception e) {
+                    diag.append("Cannot read iptables: ").append(e.getMessage()).append("\n");
+                }
+                diag.append("\n");
+
+                // Check SELinux status
+                diag.append("=== SELINUX STATUS ===").append("\n");
+                String selinux = getSystemProperty("ro.build.selinux");
+                diag.append("SELinux Build: ").append(selinux).append("\n");
+                try {
+                    Process getenforce = Runtime.getRuntime().exec("getenforce");
+                    reader = new java.io.BufferedReader(
+                            new java.io.InputStreamReader(getenforce.getInputStream()));
+                    String mode = reader.readLine();
+                    diag.append("Current Mode: ").append(mode != null ? mode : "unknown").append("\n");
+                    reader.close();
+                    getenforce.destroy();
+                } catch (Exception e) {
+                    diag.append("Cannot check enforce: ").append(e.getMessage()).append("\n");
+                }
+                diag.append("\n");
+
+                // Check system security
+                diag.append("=== SYSTEM SECURITY ===").append("\n");
+                diag.append("ro.secure: ").append(getSystemProperty("ro.secure")).append("\n");
+                diag.append("ro.adb.secure: ").append(getSystemProperty("ro.adb.secure")).append("\n");
+                diag.append("ro.debuggable: ").append(getSystemProperty("ro.debuggable")).append("\n");
+
+                String finalDiag = diag.toString();
+                final String finalAdbEnabled = adbEnabled;
+                final String finalUsbConfig = usbConfig;
+                runOnUiThread(() -> {
+                    if (adbStatusView != null) {
+                        adbStatusView.setText(finalDiag);
+                        // Update button text based on ADB status
+                        if (enableAdbButton != null) {
+                            if (finalAdbEnabled.equals("ENABLED") && finalUsbConfig != null
+                                    && finalUsbConfig.contains("adb")) {
+                                enableAdbButton.setText("ADB Active");
+                                enableAdbButton.setEnabled(false);
+                            } else {
+                                enableAdbButton.setText("Enable ADB");
+                                enableAdbButton.setEnabled(true);
+                            }
+                        }
+                    }
+                });
+
+            } catch (Exception e) {
+                Log.e(TAG, "Error updating ADB diagnostics", e);
+                runOnUiThread(() -> {
+                    if (adbStatusView != null) {
+                        adbStatusView.setText("Error loading diagnostics: " + e.getMessage());
+                    }
+                });
+            }
+        }).start();
+    }
+
+    /**
+     * Attempt to enable ADB using multiple approaches
+     */
+    private void attemptEnableAdb() {
+        if (enableAdbButton != null) {
+            enableAdbButton.setEnabled(false);
+            enableAdbButton.setText("Enabling...");
+        }
+
+        new Thread(() -> {
+            StringBuilder result = new StringBuilder();
+            result.append("=== ATTEMPTING TO ENABLE ADB ===").append("\n\n");
+
+            int successCount = 0;
+            int totalAttempts = 0;
+
+            // Approach 1: Enable ADB via Settings.Global
+            totalAttempts++;
+            result.append("[1] Settings.Global.ADB_ENABLED...\n");
+            try {
+                Settings.Global.putInt(getContentResolver(), Settings.Global.ADB_ENABLED, 1);
+                int check = Settings.Global.getInt(getContentResolver(), Settings.Global.ADB_ENABLED);
+                if (check == 1) {
+                    result.append("✓ SUCCESS: ADB enabled in settings\n\n");
+                    successCount++;
+                } else {
+                    result.append("✗ FAILED: Setting did not persist\n\n");
+                }
+            } catch (Exception e) {
+                result.append("✗ FAILED: ").append(e.getMessage()).append("\n\n");
+            }
+
+            // Approach 2: Set USB configuration to include ADB
+            totalAttempts++;
+            result.append("[2] SystemProperties: persist.sys.usb.config...\n");
+            try {
+                String currentConfig = getSystemProperty("persist.sys.usb.config");
+                String newConfig = currentConfig != null && !currentConfig.isEmpty()
+                        ? (currentConfig.contains("adb") ? currentConfig : currentConfig + ",adb")
+                        : "mtp,adb";
+                setSystemProperty("persist.sys.usb.config", newConfig);
+                Thread.sleep(500);
+                String check = getSystemProperty("persist.sys.usb.config");
+                if (check != null && check.contains("adb")) {
+                    result.append("✓ SUCCESS: USB config set to ").append(check).append("\n\n");
+                    successCount++;
+                } else {
+                    result.append("✗ FAILED: Property did not change\n\n");
+                }
+            } catch (Exception e) {
+                result.append("✗ FAILED: ").append(e.getMessage()).append("\n\n");
+            }
+
+            // Approach 3: Trigger USB configuration change
+            totalAttempts++;
+            result.append("[3] SystemProperties: sys.usb.config...\n");
+            try {
+                setSystemProperty("sys.usb.config", "mtp,adb");
+                Thread.sleep(500);
+                String check = getSystemProperty("sys.usb.config");
+                if (check != null && check.contains("adb")) {
+                    result.append("✓ SUCCESS: Active USB config includes ADB\n\n");
+                    successCount++;
+                } else {
+                    result.append("✗ FAILED: Config = ").append(check).append("\n\n");
+                }
+            } catch (Exception e) {
+                result.append("✗ FAILED: ").append(e.getMessage()).append("\n\n");
+            }
+
+            // Approach 4: Remove iptables firewall rule (if exists)
+            totalAttempts++;
+            result.append("[4] iptables: Remove ADB block...\n");
+            try {
+                Process iptables = Runtime.getRuntime().exec(new String[] {
+                        "iptables", "-D", "INPUT", "-p", "tcp", "--dport", "5555", "-j", "DROP"
+                });
+                int exitCode = iptables.waitFor();
+                if (exitCode == 0) {
+                    result.append("✓ SUCCESS: Firewall rule removed\n\n");
+                    successCount++;
+                } else {
+                    result.append("✗ FAILED: iptables returned code ").append(exitCode).append("\n\n");
+                }
+            } catch (Exception e) {
+                result.append("✗ FAILED: ").append(e.getMessage()).append("\n\n");
+            }
+
+            // Approach 5: Start adbd service
+            totalAttempts++;
+            result.append("[5] Start adbd service...\n");
+            try {
+                setSystemProperty("ctl.start", "adbd");
+                Thread.sleep(1000);
+                String check = getSystemProperty("init.svc.adbd");
+                if ("running".equals(check)) {
+                    result.append("✓ SUCCESS: adbd service started\n\n");
+                    successCount++;
+                } else {
+                    result.append("✗ FAILED: Service state = ").append(check).append("\n\n");
+                }
+            } catch (Exception e) {
+                result.append("✗ FAILED: ").append(e.getMessage()).append("\n\n");
+            }
+
+            // Approach 6: Use alternative ADB port (bypass firewall on 5555)
+            totalAttempts++;
+            result.append("[6] Alternative ADB ports (bypass firewall)...\n");
+            int altPort = 0;
+            try {
+                // Try alternative ports: 5556, 5557, 5558
+                for (int port : new int[] { 5556, 5557, 5558 }) {
+                    setSystemProperty("service.adb.tcp.port", String.valueOf(port));
+                    Thread.sleep(500);
+                    String check = getSystemProperty("service.adb.tcp.port");
+                    if (String.valueOf(port).equals(check)) {
+                        altPort = port;
                         break;
                     }
                 }
 
-                if (usbDir == null) {
-                    // Try to find any mounted USB storage
-                    File storageRoot = new File("/storage");
-                    if (storageRoot.exists()) {
-                        File[] storageFiles = storageRoot.listFiles();
-                        if (storageFiles != null) {
-                            for (File f : storageFiles) {
-                                if (f.isDirectory() && !f.getName().equals("emulated") &&
-                                        !f.getName().equals("self") && f.canWrite()) {
-                                    usbDir = f;
-                                    Log.i(TAG, "Found writable storage at: " + f.getAbsolutePath());
-                                    break;
-                                }
-                            }
-                        }
+                if (altPort > 0) {
+                    // Restart adbd to apply new port
+                    setSystemProperty("ctl.restart", "adbd");
+                    Thread.sleep(1000);
+                    String adbdState = getSystemProperty("init.svc.adbd");
+                    if ("running".equals(adbdState)) {
+                        result.append("✓ SUCCESS: ADB listening on port ").append(altPort).append("\n");
+                        result.append("  (bypasses firewall on default port 5555)\n\n");
+                        successCount++;
+                    } else {
+                        result.append("✗ FAILED: Port set but adbd not running\n\n");
                     }
+                } else {
+                    result.append("✗ FAILED: Could not set alternative port\n\n");
                 }
-
-                if (usbDir == null) {
-                    runOnUiThread(() -> {
-                        Toast.makeText(this, "No writable USB drive found", Toast.LENGTH_LONG).show();
-                    });
-                    Log.w(TAG, "No USB drive found. Checked paths and /storage directory.");
-                    return;
-                }
-
-                // Create filename with timestamp
-                String timestamp = new java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US)
-                        .format(new java.util.Date());
-                String filename = "CustomLauncher_" + timestamp + ".log";
-                File logFile = new File(usbDir, filename);
-
-                // Write logs to file
-                java.io.FileWriter writer = new java.io.FileWriter(logFile);
-                writer.write("Custom Launcher Debug Logs\n");
-                writer.write("Generated: " + timestamp + "\n");
-                writer.write("=================================\n\n");
-                writer.write(logs);
-                writer.close();
-
-                final String savedPath = logFile.getAbsolutePath();
-                runOnUiThread(() -> {
-                    Toast.makeText(this, "Logs saved to: " + savedPath, Toast.LENGTH_LONG).show();
-                });
-                Log.i(TAG, "Logs saved successfully to: " + savedPath);
-
             } catch (Exception e) {
-                runOnUiThread(() -> {
-                    Toast.makeText(this, "Failed to save logs: " + e.getMessage(), Toast.LENGTH_LONG).show();
-                });
-                Log.e(TAG, "Failed to save logs to USB", e);
+                result.append("✗ FAILED: ").append(e.getMessage()).append("\n\n");
             }
+
+            // Summary
+            result.append("===========================\n");
+            result.append("SUMMARY: ").append(successCount).append("/").append(totalAttempts)
+                    .append(" approaches succeeded\n\n");
+
+            if (successCount > 0) {
+                result.append("✓ Some methods succeeded!\n");
+                result.append("Try connecting with:\n");
+                if (altPort > 0) {
+                    result.append("  adb connect <car-ip>:").append(altPort).append("\n");
+                    result.append("  (using alternative port to bypass firewall)\n\n");
+                } else {
+                    result.append("  adb connect <car-ip>:5555\n\n");
+                }
+            } else {
+                result.append("✗ All methods failed.\n");
+                result.append("Possible causes:\n");
+                result.append("• SELinux blocking modifications\n");
+                result.append("• Vendor-specific security policies\n");
+                result.append("• Need root access\n");
+                result.append("• USB hardware locked to host mode\n\n");
+            }
+
+            String finalResult = result.toString();
+            final int finalSuccessCount = successCount;
+            runOnUiThread(() -> {
+                if (adbStatusView != null) {
+                    adbStatusView.setText(finalResult);
+                }
+                if (enableAdbButton != null) {
+                    enableAdbButton.setEnabled(true);
+                    enableAdbButton.setText(finalSuccessCount > 0 ? "Try Again" : "Enable ADB");
+                }
+                Toast.makeText(MainActivity.this,
+                        finalSuccessCount > 0 ? "Some methods succeeded!" : "All methods failed",
+                        Toast.LENGTH_LONG).show();
+
+                // Refresh diagnostics after 2 seconds
+                new Handler(Looper.getMainLooper()).postDelayed(() -> updateAdbDiagnostics(), 2000);
+            });
+
         }).start();
     }
 
     /**
-     * Start reading logs and updating the TextView
+     * Get system property via reflection
      */
-    private void startLogReader(TextView logView, android.widget.ScrollView scrollView) {
-        debugHandler = new Handler(Looper.getMainLooper());
+    private String getSystemProperty(String key) {
+        try {
+            Class<?> systemProperties = Class.forName("android.os.SystemProperties");
+            java.lang.reflect.Method get = systemProperties.getMethod("get", String.class);
+            String value = (String) get.invoke(null, key);
+            return value != null && !value.isEmpty() ? value : "(not set)";
+        } catch (Exception e) {
+            return "(error)";
+        }
+    }
 
-        // Log display metrics again when debug dialog opens
-        logDisplayMetrics();
+    /**
+     * Set system property via reflection
+     */
+    private void setSystemProperty(String key, String value) throws Exception {
+        Class<?> systemProperties = Class.forName("android.os.SystemProperties");
+        java.lang.reflect.Method set = systemProperties.getMethod("set", String.class, String.class);
+        set.invoke(null, key, value);
+        Log.i(TAG, "Set system property: " + key + " = " + value);
+    }
 
-        // Start background thread for log reading
-        new Thread(() -> {
-            try {
-                // Load initial logs
-                StringBuilder logBuffer = new StringBuilder();
-                Process initialLogcat;
-                if (showingSaicLogs) {
-                    initialLogcat = Runtime.getRuntime().exec(new String[] {
-                            "logcat", "-d", "-v", "time", "-t", "100",
-                            "-s",
-                            "SaicLoader:V",
-                            "com.saicmotor.hmi.launcher:V",
-                            "VehicleStatusManager:V",
-                            "ChargingViewModel:V",
-                            "AndroidRuntime:E"
-                    });
-                } else {
-                    initialLogcat = Runtime.getRuntime().exec(new String[] {
-                            "logcat", "-d", "-v", "time", "-t", "100",
-                            "-s",
-                            TAG + ":V",
-                            "VehicleDataService:V",
-                            "HeatingControlService:V",
-                            "MediaListenerService:V",
-                            "SaicMediaService:V",
-                            "AndroidRuntime:E"
-                    });
-                }
-                java.io.BufferedReader initialReader = new java.io.BufferedReader(
-                        new java.io.InputStreamReader(initialLogcat.getInputStream()));
-                String line;
-                while ((line = initialReader.readLine()) != null) {
-                    logBuffer.append(line).append("\n");
-                }
-                initialReader.close();
-                initialLogcat.destroy();
+    /**
+     * Create context menu for clock long press
+     */
+    @Override
+    public void onCreateContextMenu(ContextMenu menu, View v, ContextMenu.ContextMenuInfo menuInfo) {
+        super.onCreateContextMenu(menu, v, menuInfo);
+        getMenuInflater().inflate(R.menu.launcher_menu, menu);
+    }
 
-                // Update UI with initial logs
-                String initialText = logBuffer.toString();
-                runOnUiThread(() -> logView.setText(initialText));
-
-                // Start tailing from current time
-                String timestamp = new java.text.SimpleDateFormat("MM-dd HH:mm:ss.SSS", java.util.Locale.US)
-                        .format(new java.util.Date());
-
-                Process tailProcess;
-                if (showingSaicLogs) {
-                    tailProcess = Runtime.getRuntime().exec(new String[] {
-                            "logcat",
-                            "-v", "time",
-                            "-T", timestamp,
-                            "-s",
-                            "SaicLoader:V",
-                            "com.saicmotor.hmi.launcher:V",
-                            "VehicleStatusManager:V",
-                            "ChargingViewModel:V",
-                            "AndroidRuntime:E"
-                    });
-                } else {
-                    tailProcess = Runtime.getRuntime().exec(new String[] {
-                            "logcat",
-                            "-v", "time",
-                            "-T", timestamp,
-                            "-s",
-                            TAG + ":V",
-                            "VehicleDataService:V",
-                            "HeatingControlService:V",
-                            "MediaListenerService:V",
-                            "SaicMediaService:V",
-                            "AndroidRuntime:E"
-                    });
-                }
-
-                java.io.BufferedReader reader = new java.io.BufferedReader(
-                        new java.io.InputStreamReader(tailProcess.getInputStream()));
-
-                Log.i(TAG, "Started logcat tail from time: " + timestamp);
-
-                // Blocking read loop in background thread
-                while ((line = reader.readLine()) != null) {
-                    logBuffer.append(line).append("\n");
-
-                    // Keep only last 500 lines
-                    String[] lines = logBuffer.toString().split("\n");
-                    if (lines.length > 500) {
-                        logBuffer = new StringBuilder();
-                        for (int i = lines.length - 500; i < lines.length; i++) {
-                            logBuffer.append(lines[i]).append("\n");
-                        }
-                    }
-
-                    // Update UI
-                    String finalText = logBuffer.toString();
-                    runOnUiThread(() -> {
-                        logView.setText(finalText);
-                        scrollView.post(() -> scrollView.fullScroll(android.view.View.FOCUS_DOWN));
-                    });
-                }
-
-                reader.close();
-                tailProcess.destroy();
-
-            } catch (Exception e) {
-                Log.e(TAG, "Log reader thread error: " + e.getMessage());
-                runOnUiThread(() -> logView.setText("Error reading logs: " + e.getMessage()));
-            }
-        }).start();
+    /**
+     * Handle context menu item selection
+     */
+    @Override
+    public boolean onContextItemSelected(MenuItem item) {
+        int id = item.getItemId();
+        if (id == R.id.menu_shell) {
+            openShellActivity();
+            return true;
+        } else if (id == R.id.menu_usb_debug) {
+            openUsbDebugScreen();
+            return true;
+        } else if (id == R.id.menu_log_viewer) {
+            openLogViewer();
+            return true;
+        }
+        return super.onContextItemSelected(item);
     }
 }

@@ -12,6 +12,616 @@
 
 This note is to prevent repeated, unnecessary changes that break the build.
 
+---
+
+# CRITICAL: OTA Firmware Modification Project - STATUS UPDATE (3 Feb 2026)
+
+## ⚠️ WHY ADB IS NOT AN OPTION - READ THIS FIRST ⚠️
+
+**The car's firewall BLOCKS all ADB access:**
+
+- iptables rules in `/system/bin/arp_update.sh` DROP packets on port 5555 (ADB)
+- These rules run on EVERY boot
+- Cannot use `adb shell` to fix the problem that blocks `adb shell`
+- This is a chicken-and-egg problem
+
+**Why "just use ADB" suggestions are WRONG:**
+
+- ❌ "Use adb shell to modify the script" - ADB port is blocked by the script!
+- ❌ "Use adb to push files" - Cannot connect via ADB at all
+- ❌ "Flash with fastboot" - Bootloader is locked, fastboot not accessible
+- ❌ "Root the device first" - Cannot root without ADB/fastboot access
+
+**The ONLY solution:**
+Create a modified OTA update package that the car will accept via USB stick, which contains the patched firewall script that removes the ADB blocks.
+
+## Current Status: ⚠️ BLOCKED - Car Rejecting All Modified OTA Packages
+
+### What's Been Completed:
+
+1. ✅ Extracted OTA package (R67 firmware) using payload-dumper-go
+2. ✅ Decompressed payload.bin to partition images (system.img, boot.img, vendor.img)
+3. ✅ Extracted system.img filesystem
+4. ✅ Modified `/system/bin/arp_update.sh` - commented out 8 firewall rules
+5. ✅ Created new modified system.img (1.9GB sparse format) with patched script
+6. ✅ Set up WSL2 on Windows (Ubuntu 24.04) with 400GB space on E: drive
+7. ✅ Built complete AOSP Android 9 source tree (200GB+)
+8. ✅ Compiled delta_generator and all OTA tools
+9. ✅ Generated modified payload.bin from patched system.img
+10. ✅ Fixed ALL metadata format issues:
+    - checksoc.txt: Exactly 20 bytes (no extra newline)
+    - payload_properties.txt: Base64 hash format (not hex)
+    - ota-property-files: Excludes checksoc.txt and otacert (matches original)
+    - ota-streaming-property-files: Includes metadata field at end
+11. ✅ Created multiple OTA packages with correct structure and signatures
+
+### Current Problem:
+
+**Car STILL rejects the modified OTA package** despite all metadata being correct and matching the original format exactly. All visible format checks pass:
+
+- ✅ File structure matches
+- ✅ Metadata offsets correct
+- ✅ Signature valid (AOSP test keys)
+- ✅ All file sizes and checksums correct
+
+**Hypothesis:** The payload.bin itself may have issues:
+
+- Partition sizes might be incorrect
+- Delta operations may be malformed
+- Manifest proto format may have subtle differences
+- Recovery may be validating payload internals we haven't checked yet
+
+### Next Steps - Payload Investigation Required:
+
+Since all metadata checks pass but car still rejects the OTA, we need to investigate the payload.bin file itself:
+
+1. **Extract and Examine Payload Manifest:**
+   - Use `delta_generator` or Python script to extract the manifest protobuf
+   - Compare manifest structure with original payload.bin
+   - Check partition list, operations, and signatures
+
+2. **Validate Partition Compatibility:**
+   - Check if modified partition sizes match expected sizes
+   - Verify partition signatures/checksums
+   - Ensure target partition versions are compatible
+
+3. **Compare Delta Operations:**
+   - Extract operation lists from both payloads
+   - Check if delta operations reference correct partition offsets
+   - Verify install operations are valid
+
+4. **Alternative Approaches if Payload is Broken:**
+   - Try full partition images instead of delta operations
+   - Use different delta_generator flags
+   - Consider modifying original payload.bin directly instead of regenerating
+
+### Working Script: final_ota_with_checksoc.sh ✅
+
+**Location:** `/Users/adam/Downloads/1300 SWI68 R67/ota_modification_workspace/final_ota_with_checksoc.sh`
+
+**Purpose:** Automated OTA package builder with all metadata fixes applied
+
+**Status:** Fully functional, generates properly structured OTA packages
+
+**Key Features:**
+
+- Extracts proper base64 hashes from payload.bin using brillo_update_payload.py
+- Creates exact 20-byte checksoc.txt using printf
+- Iterative metadata offset calculation (handles size convergence)
+- Excludes checksoc.txt/otacert from ota-property-files (car requires this)
+- Includes metadata field in ota-streaming-property-files (critical)
+- Signs with AOSP test keys matching original
+- Comprehensive verification at end
+
+**Usage:**
+
+```bash
+cd /Users/adam/Downloads/1300\ SWI68\ R67/ota_modification_workspace
+./final_ota_with_checksoc.sh
+# Output: usb_ota_update_TRULY_FINAL.zip
+```
+
+**Prerequisites:**
+
+- payload.bin must exist in ~/aosp/ota_build/payload.bin (WSL path)
+- All original files in ota_signed_extract/: care_map.txt, compatibility.zip, metadata, otacert, checksoc.txt
+- Python 2.7 and 3.11 available
+- Java 11 with signapk.jar configured
+
+**Script Breakdown (418 lines):**
+
+```bash
+# Step 0: Extract payload_properties.txt with correct base64 hashes
+cd ~/aosp
+python3 build/tools/releasetools/brillo_update_payload.py properties \
+  ota_build/payload.bin > payload_properties.txt
+
+# Step 0b: Create checksoc.txt with EXACTLY 20 bytes
+printf "SWI68-29958-1300R67\n" > checksoc.txt
+
+# Step 1: Create dummy metadata for iteration
+cat > metadata << 'EOF'
+ota-property-files=payload_metadata.bin:0:88046,payload.bin:0:918571585,...
+ota-streaming-property-files=payload.bin:0:918571585,...,metadata:0:602
+EOF
+
+# Step 2: Iterative convergence loop (max 5 iterations)
+for i in 1 2 3 4 5; do
+  # Create unsigned ZIP with current metadata
+  cd ~/aosp/ota_signed_extract
+  zip -X ../usb_ota_update_unsigned.zip ./*
+
+  # Calculate actual byte offsets from ZIP
+  python3 << 'PYTHON'
+import zipfile
+with zipfile.ZipFile('usb_ota_update_unsigned.zip', 'r') as z:
+    for info in z.infolist():
+        print(f"{info.filename}:{info.header_offset}:{info.file_size}")
+PYTHON
+
+  # Update metadata with new offsets
+  # Check if metadata size changed (indicates need for another iteration)
+  if [ "$old_size" == "$new_size" ]; then
+    echo "Converged after $i iterations"
+    break
+  fi
+done
+
+# Step 3-7: Sign, extract, recalculate post-signing offsets, reassemble, sign again
+java -jar signapk.jar -w testkey.x509.pem testkey.pk8 \
+  usb_ota_update_unsigned.zip usb_ota_update_signed.zip
+
+# Step 8: Verification
+echo "Verifying all offsets match metadata..."
+# Checks each file's offset matches metadata values
+```
+
+**Critical Metadata Format (Fixed):**
+
+```
+ota-property-files=payload_metadata.bin:6809:88046,payload.bin:6809:918571585,
+  payload_properties.txt:918578452:154,care_map.txt:719:217,
+  compatibility.zip:1057:5705,metadata:69:602
+
+ota-streaming-property-files=payload.bin:6809:918571585,
+  payload_properties.txt:918578452:154,care_map.txt:719:217,
+  compatibility.zip:1057:5705,metadata:69:602
+```
+
+**NOTE:** This script generates valid OTA packages, but the car still rejects them. The problem appears to be inside payload.bin, not the package structure.
+
+## Files Ready for Payload Investigation
+
+**WSL (Windows) Workspace: `~/aosp/` (Ubuntu 24.04 on E: drive)**
+
+```
+~/aosp/
+├── build/                              # AOSP build system
+│   └── tools/releasetools/
+│       ├── ota_from_target_files.py
+│       ├── brillo_update_payload.py
+│       └── signapk.jar
+├── out/host/linux-x86/bin/
+│   └── delta_generator               # OTA payload generator
+├── ota_build/
+│   ├── payload.bin                   # ⭐ Modified payload (918MB, UNDER INVESTIGATION)
+│   ├── system.img                    # Modified partition with patched arp_update.sh
+│   ├── boot.img                      # Unmodified
+│   └── vendor.img                    # Unmodified
+└── ota_signed_extract/               # Final OTA package files
+    ├── payload.bin → ../ota_build/payload.bin
+    ├── payload_properties.txt        # Base64 hashes (✅ CORRECT)
+    ├── checksoc.txt                  # 20 bytes: "SWI68-29958-1300R67\n" (✅ CORRECT)
+    ├── care_map.txt                  # Partition verification map
+    ├── compatibility.zip             # Device compatibility checks
+    ├── otacert                       # AOSP test certificate
+    └── META-INF/com/android/
+        └── metadata                  # Streaming offsets (✅ CORRECT)
+```
+
+**Mac Workspace: `/Users/adam/Downloads/1300 SWI68 R67/ota_modification_workspace/`**
+
+```
+ota_modification_workspace/
+├── final_ota_with_checksoc.sh        # ⭐ Working OTA builder script (418 lines)
+├── usb_ota_update_TRULY_FINAL.zip    # Generated OTA (876MB, CAR REJECTS)
+├── ota_comparison/
+│   ├── original/                     # Extracted original OTA for comparison
+│   │   ├── payload.bin               # Original (952MB)
+│   │   ├── payload_properties.txt
+│   │   ├── checksoc.txt
+│   │   ├── care_map.txt
+│   │   └── META-INF/com/android/metadata
+│   └── new/                          # Extracted generated OTA
+│       ├── payload.bin               # Modified (918MB, 34MB smaller)
+│       ├── payload_properties.txt
+│       ├── checksoc.txt
+│       └── META-INF/com/android/metadata
+└── modified_ota_final/
+    ├── system.img                    # Modified partition (1.9GB)
+    └── system_mount/system/bin/
+        ├── arp_update.sh             # ⭐ MODIFIED - 8 lines commented
+        └── arp_update.sh.original    # Backup
+```
+
+**Original OTA:** `/Users/adam/Downloads/1300 SWI68 R67/AVN_MPU/usb_ota_update.zip` (909MB)
+
+## Payload Investigation Guide
+
+### Why Metadata Fixes Didn't Work
+
+Despite fixing all 4 critical metadata issues, the car's recovery still rejects the OTA. This means the validation failure occurs **inside** the payload.bin processing, not at the package level.
+
+**What We Fixed (All Confirmed Working):**
+
+1. ✅ checksoc.txt format (20 bytes exactly)
+2. ✅ payload_properties.txt hashes (base64 format)
+3. ✅ ota-property-files structure (excludes checksoc/otacert)
+4. ✅ ota-streaming-property-files structure (includes metadata)
+
+**What Remains to Check (Payload Internals):**
+
+### 1. Payload Manifest Extraction
+
+The payload.bin file has a protobuf manifest at the beginning that describes the update:
+
+```bash
+# Extract manifest from payload (WSL)
+cd ~/aosp
+python3 build/tools/releasetools/brillo_update_payload.py info \
+  ota_build/payload.bin > payload_manifest.txt
+
+# Compare with original
+python3 build/tools/releasetools/brillo_update_payload.py info \
+  /path/to/original/payload.bin > original_manifest.txt
+
+diff -u original_manifest.txt payload_manifest.txt
+```
+
+**Look for:**
+
+- Partition list differences (system, boot, vendor)
+- Partition sizes mismatches
+- Operation counts (REPLACE vs REPLACE_BZ, SOURCE_COPY)
+- Signature differences
+- Manifest hash differences
+
+### 2. Partition Compatibility Checks
+
+The car's recovery validates partition sizes and versions:
+
+```bash
+# Check partition sizes in manifest
+grep -E "partition_name|new_partition_info" payload_manifest.txt
+
+# Expected sizes (from original OTA):
+# system: ~2.5GB
+# boot: ~32MB
+# vendor: ~512MB
+```
+
+**Possible Issues:**
+
+- Modified system.img is wrong size (should be exactly 2621440000 bytes for R67)
+- Sparse image not converted correctly
+- Partition version/timestamp mismatch
+
+### 3. Delta Operations Analysis
+
+The payload contains update operations. If delta_generator created incompatible operations:
+
+```bash
+# Count operation types
+grep "type:" payload_manifest.txt | sort | uniq -c
+
+# Original OTA should use:
+# REPLACE_BZ - Compressed replacement
+# ZERO - Zero out blocks
+# SOURCE_COPY - Copy blocks from current partition
+```
+
+**Red Flags:**
+
+- If modified payload has different operation types
+- If operation block ranges are invalid
+- If operations reference non-existent source blocks
+
+### 4. Payload Signature Verification
+
+The payload.bin has internal signatures that the recovery verifies:
+
+```bash
+# Check signature information
+grep -A 10 "signatures_size" payload_manifest.txt
+```
+
+**Possible Issues:**
+
+- Payload signed with wrong keys
+- Signature offset incorrect
+- Hash tree descriptor mismatch
+
+### 5. Device-Specific Validation
+
+The manifest may contain device-specific checks:
+
+```bash
+# Look for device fingerprints
+grep -E "pre-device|post-device|fingerprint" payload_manifest.txt
+```
+
+**Expected:**
+
+- `pre-device: mt2712_saic_eh32`
+- No `pre-build` field (this is a FULL OTA, not incremental)
+
+### Alternative: Direct Partition Modification
+
+If payload regeneration is broken, try modifying the **original** payload.bin:
+
+```bash
+# Extract original payload partitions
+cd ~/aosp
+python3 build/tools/releasetools/brillo_update_payload.py extract \
+  /path/to/original/payload.bin extracted_partitions/
+
+# Replace system.img with modified one
+cp ~/ota_build/system.img extracted_partitions/system.img
+
+# Repack payload (if tool exists)
+# This may not be possible - delta_generator doesn't have a "repack" mode
+```
+
+### 6. Full OTA vs Incremental Delta
+
+Verify that delta_generator created a FULL OTA, not an incremental delta:
+
+```bash
+# Check if payload has "old_partition_info" fields
+grep "old_partition_info" payload_manifest.txt
+
+# Should be EMPTY for full OTA
+# If present, delta_generator incorrectly made an incremental update
+```
+
+### Tools Available
+
+**WSL (Ubuntu 24.04):**
+
+- `delta_generator` - Create new payloads
+- `brillo_update_payload.py` - Extract manifest, verify signatures
+- `payload_info.py` - Parse protobuf manifest
+- `ota_from_target_files.py` - Generate complete OTA packages
+
+**Commands:**
+
+```bash
+# Extract full manifest details
+python3 build/tools/releasetools/brillo_update_payload.py info payload.bin
+
+# Verify payload signature
+python3 build/tools/releasetools/brillo_update_payload.py verify payload.bin
+
+# Extract partition images from payload
+python3 build/tools/releasetools/brillo_update_payload.py extract payload.bin output_dir/
+```
+
+## Solution Path: Build AOSP on Windows WSL2
+
+## Solution Path: Build AOSP on Windows WSL2
+
+**Current Progress:**
+
+- ✅ WSL2 installed (Ubuntu 24.04)
+- ✅ Moved to E: drive (400GB available)
+- ✅ SSH access configured
+- ✅ All build dependencies installed
+- ✅ AOSP 9.0.0_r61 downloaded and built (~200GB)
+- ✅ delta_generator compiled successfully
+- ✅ Modified payload.bin generated
+- ✅ All metadata format issues fixed
+- ⚠️ Car still rejects OTA - payload.bin investigation required
+
+**Requirements Met:**
+
+- ✅ ~400GB free disk space on E: drive
+- ✅ Ubuntu 24.04 (WSL2 on Windows)
+- ✅ 16GB+ RAM
+- ✅ Fast SSD
+
+**Steps Completed:**
+
+**Steps Completed:**
+
+### 1. Install Build Dependencies ✅
+
+```bash
+# Updated for Ubuntu 24.04
+sudo apt-get update
+sudo apt-get install -y \
+    git-core gnupg flex bison build-essential zip curl \
+    zlib1g-dev libc6-dev-i386 libncurses5 libncurses5-dev \
+    x11proto-core-dev libx11-dev libgl1-mesa-dev \
+    libxml2-utils xsltproc unzip fontconfig \
+    python3 python3-pip gcc g++ make
+
+pip3 install --user protobuf==3.20.3 --break-system-packages
+```
+
+### 2. Install Repo Tool ✅
+
+```bash
+mkdir -p ~/bin
+echo 'export PATH=~/bin:$PATH' >> ~/.bashrc
+source ~/.bashrc
+
+curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+chmod a+x ~/bin/repo
+
+git config --global user.email "adam@example.com"
+git config --global user.name "Adam"
+```
+
+### 3. Download AOSP Source ✅
+
+```bash
+mkdir ~/aosp
+cd ~/aosp
+repo init -u https://android.googlesource.com/platform/manifest -b android-9.0.0_r61
+repo sync -c -j8  # Took 4-8 hours, downloaded ~200GB
+```
+
+### 4. Build delta_generator ✅
+
+```bash
+cd ~/aosp
+source build/envsetup.sh
+lunch aosp_arm64-eng
+make delta_generator -j$(nproc)
+
+# Binary created at: out/host/linux-x86/bin/delta_generator
+```
+
+### 5. Create payload.bin with Modified System Image ✅
+
+**Transferred modified system.img from Mac to WSL, then generated payload.bin:**
+
+```bash
+cd ~/aosp
+
+# Created target_files structure
+mkdir -p ota_build
+cp ~/modified_ota_final/system.img ota_build/
+cp ~/modified_ota_final/boot.img ota_build/
+cp ~/modified_ota_final/vendor.img ota_build/
+
+# Generated payload.bin using delta_generator
+out/host/linux-x86/bin/delta_generator \
+  --partition_names=system,boot,vendor \
+  --new_partitions=ota_build/system.img,ota_build/boot.img,ota_build/vendor.img \
+  --out_file=ota_build/payload.bin
+
+# Result: payload.bin (918MB) with modified system partition
+```
+
+### 6. Assemble Final OTA ZIP ✅
+
+**Used final_ota_with_checksoc.sh script to create complete OTA package:**
+
+```bash
+# On Mac, transferred files back from WSL
+# Ran final_ota_with_checksoc.sh with all metadata fixes
+
+cd /Users/adam/Downloads/1300\ SWI68\ R67/ota_modification_workspace
+./final_ota_with_checksoc.sh
+
+# Generated: usb_ota_update_TRULY_FINAL.zip (876MB)
+# Contains: payload.bin, payload_properties.txt, checksoc.txt,
+#           care_map.txt, compatibility.zip, otacert, metadata
+```
+
+### 7. Install on Car ⚠️ BLOCKED
+
+**Installation steps ready, but car rejects OTA:**
+
+1. ~~Copy `usb_ota_update_TRULY_FINAL.zip` to USB stick root~~
+2. ~~Insert USB into car~~
+3. ~~Navigate to Settings → System → Software Update → USB Update~~
+4. ~~Car will install modified OTA~~
+5. ~~Reboot~~
+6. ~~**NOW** ADB will work: `adb connect car-ip:5555`~~
+
+**Current Issue:** Car rejects OTA during recovery validation - need to investigate payload.bin internals.
+
+## Technical Details
+
+### Modified Script Content
+
+```bash
+# /system/bin/arp_update.sh (lines 11-15, 23-26 commented out)
+
+### ADB BLOCK REMOVED - Network ADB now enabled ###
+# iptables -I INPUT -p tcp --dport 5555 -j DROP
+# iptables -I OUTPUT -p tcp --sport 5555 -j DROP
+
+### CARPLAY WIRELESS BLOCK REMOVED ###
+# iptables -I INPUT -p tcp --dport 7000 -j DROP
+# iptables -I INPUT -p udp --dport 5353 -j DROP
+```
+
+### Why This Blocked
+
+**Google's OTA tools are NOT standalone** - they require:
+
+1. Full AOSP source tree (~200GB)
+2. Complete build environment with all dependencies compiled
+3. Generated protobuf Python modules (apex_manifest, ota_metadata_pb2, care_map_pb2)
+4. Compiled C++ binaries (delta_generator, img2simg, simg2img, bsdiff, etc.)
+5. Build configuration files and Android.bp (Soong) build system
+
+**Attempted approaches that failed:**
+
+- ❌ Clone only build + update_engine repos → missing dependencies
+- ❌ Use brillo_update_payload script → needs delta_generator binary
+- ❌ Use ota_from_target_files.py directly → needs protobuf modules from full build
+- ❌ Compile delta_generator standalone → uses Android.bp, needs full AOSP tree
+- ❌ Find pre-built delta_generator → none available for Android 9 Pie
+
+**The ONLY solution:** Build full AOSP source tree (Android 9 to match MG4 firmware).
+
+## DO NOT SUGGEST THESE - THEY WILL NOT WORK:
+
+❌ **"Just use adb shell to modify the script"**
+
+- ADB port is blocked by iptables
+- Cannot connect via ADB
+
+❌ **"Use adb push to replace the file"**
+
+- ADB is blocked, cannot push anything
+
+❌ **"Flash with fastboot"**
+
+- Bootloader is locked
+- No unlock method available
+
+❌ **"Root the device first"**
+
+- Cannot root without ADB or fastboot
+- Catch-22 situation
+
+❌ **"Use an init.d script to override firewall"**
+
+- Cannot install init.d script without ADB or root
+- /system is read-only
+
+❌ **"Fix the checksoc.txt format"** (ALREADY DONE)
+
+- Fixed to exactly 20 bytes with printf
+- Not the issue
+
+❌ **"Fix the payload_properties.txt hashes"** (ALREADY DONE)
+
+- Switched from hex to base64 format
+- Not the issue
+
+❌ **"Fix the metadata structure"** (ALREADY DONE)
+
+- Excluded checksoc.txt/otacert from ota-property-files
+- Added metadata to ota-streaming-property-files
+- All metadata validated correct
+- Not the issue
+
+✅ **THE ONLY SOLUTION:**
+
+1. Investigate payload.bin internals (manifest, signatures, partition compatibility)
+2. Fix whatever is causing the car's recovery to reject the payload
+3. Build modified OTA package with corrected payload
+4. Install via USB stick
+5. THEN ADB works
+
+---
+
 # MG4 Custom Launcher Development - Agent Context
 
 ## Project Overview
@@ -571,61 +1181,82 @@ All firmware files are located in the `mg_firmware/` directory within this repos
    - `URLDecoder.decode()` handles URI encoding
    - Tested on car: Album art displays correctly for Bluetooth media
 
-**Implementation Details:**
-
-- **Activation**: Triple-tap the clock (time display) within 500ms between taps
-- **Log Filters**: Shows only relevant logs:
-  - `CustomLauncher:V` - Main launcher logs
-  - `VehicleDataService:V` - Vehicle service binding logs
-  - `HeatingControlService:V` - Heating control service logs (seats & steering wheel)
-  - `MediaListenerService:V` - Media service logs
-  - `AndroidRuntime:E` - Critical errors
-- **Permission**: Added `android.permission.READ_LOGS`
-- **Log Command**: Uses `logcat -v time` with tag filtering
-- **Auto-refresh**: Updates every 1 second while dialog is open
-- **Memory**: Keeps last 500 lines to prevent memory issues
-
-**Usage on Car:**
-
-Since ADB is not available on the car, this debug dialog allows you to:
-
-1. See if vehicle service is connecting
-2. Check for any binding errors
-3. Monitor media service status
-4. View any runtime exceptions
-5. Clear logs to start fresh debugging session
-
-**Testing:**
-
-- ✅ Dialog opens on triple-tap
-- ✅ Logs display in real-time
-- ✅ Auto-scrolls to bottom
-- ✅ Clear button works
-- ✅ Close button stops log reader and cleans up resources
+**Note:** Original debug modal dialog implementation was replaced with full-screen LogViewerActivity (see Phase 10).
 
 ## Build Status
 
-### Phase 7: Debug Dialog Feature ✅
+### Latest Build: Car + Emulator Signed APKs ✅
+
+**Date**: 31 Jan 2026
+**Status**: Production-ready signed APKs for both car and emulator
+
+**Build Artifacts:**
+
+1. **Car APK** (System UID):
+   - Location: `app/build/outputs/apk/car/debug/app-car-debug-signed.apk`
+   - Size: ~13 MB
+   - System Privileges: ✅ (android.uid.system)
+   - Direct SAIC SDK access without reflection
+   - Build Command: `./gradlew assembleCarDebug && ./sign_apk.sh`
+
+2. **Emulator APK** (System UID):
+   - Location: `app/build/outputs/apk/emulator/debug/app-emulator-debug-signed.apk`
+   - Size: ~12 MB
+   - System Privileges: ✅ (android.uid.system)
+   - Mock data fallback for vehicle service
+   - Build Command: `./gradlew assembleEmulatorDebug && ./sign_apk.sh emulator`
+
+**Signing Scripts:**
+
+- ✅ `sign_apk.sh` - Feature-rich signing script (FIXED 31 Jan 2026)
+  - Supports car/emulator flavors
+  - Supports debug/release build types
+  - Auto-detects APK paths
+  - Verifies signature after signing
+  - Shows helpful error messages
+  - Fixed syntax errors (unclosed quote, bash-specific syntax)
+
+- ✅ `sign_with_platform_keys.sh` - Simple alternative signing script
+  - Takes APK path as argument
+  - Quick and reliable
+  - Less features but always works
+
+**Usage:**
+
+```bash
+# Build and sign car APK (default)
+./gradlew assembleCarDebug && ./sign_apk.sh
+
+# Build and sign emulator APK
+./gradlew assembleEmulatorDebug && ./sign_apk.sh emulator
+
+# Install to device
+adb install -r app/build/outputs/apk/car/debug/app-car-debug-signed.apk
+```
+
+### Phase 7: Debug Dialog Feature ✅ (Superseded by Phase 10)
 
 **Build completed**: 20 Jan 2026
-**APK Location**: `app/build/outputs/apk/debug/app-debug.apk` (11MB)
-**Build Issues Resolved:**
+**Status**: ⚠️ Replaced with full-screen LogViewerActivity (see Phase 10)
 
-1. ✅ Created Android SDK directory structure
-2. ✅ Installed platforms 33, 34 and build-tools
-3. ✅ Added `gradle.properties` with AndroidX support
-4. ✅ Updated compileSdk to 34 (required by Material Design 1.11.0)
-5. ✅ Fixed XML layout error (invalid `auto` margin)
-6. ✅ Corrected Java imports (Handler, ImageView, Context)
+**Original Implementation:**
 
-**Emulator Testing:**
+- Modal dialog with triple-tap activation
+- Auto-refreshing logs every 1 second
+- Clear button and close functionality
 
-- ✅ App launches successfully without crashes
-- ✅ UI renders correctly at 1920×1080 @ 160 dpi
-- ⚠️ Vehicle service binding fails gracefully (expected - uses mock data)
-- ⚠️ Media listener requires notification permissions
+**Issues Encountered:**
 
-### Phase 6: Battery Card Integration ✅
+- Modal was flaky and hard to interact with
+- Scrolling behavior was unreliable
+- Logs would jump to top during refresh
+- Difficult to pause and read specific entries
+
+**Resolution:**
+
+Converted to full-screen LogViewerActivity in Phase 10 with reversed log order, eliminating all scrolling issues.
+
+### Phase 8: Vehicle Data & Album Art Integration ✅ WORKING ON CAR
 
 **Build completed**: 24 Jan 2026
 **APK Location**: `app/build/outputs/apk/debug/app-debug.apk`
@@ -802,6 +1433,96 @@ registerMethod.invoke(managerInstance, callbackProxy);
 - Vehicle automatically reduces seat heating after ~30 minutes for safety
 - HeatingControlService callback detects this and updates UI
 - This is expected vehicle behavior, not a bug
+
+### Phase 10: Log Viewer Full-Screen Conversion ✅ COMPLETED
+
+**Date**: 31 Jan 2026
+**Status**: Fully functional with reversed log order
+
+**Problem:**
+
+Original debug logs were displayed in a modal dialog that had multiple issues:
+
+- Modal was flaky and hard to interact with
+- Scrolling was difficult and unreliable
+- Logs would randomly jump to top during auto-refresh
+- No way to pause log streaming when reading specific entries
+
+**Solution Iterations:**
+
+1. **Attempt 1**: Converted modal to full-screen `LogViewerActivity`
+   - Created `activity_log_viewer.xml` with ScrollView
+   - Added pause/resume button to stop refresh temporarily
+   - **Issue**: Scroll jumping persisted during TextView updates
+
+2. **Attempt 2**: Implemented scroll position tracking
+   - Used ScrollView listeners to detect user scroll position
+   - Preserved scroll position during TextView updates
+   - **Issue**: Race conditions between scroll tracking and text updates
+
+3. **Attempt 3**: Smart auto-scroll detection
+   - Only auto-scroll when user is at bottom
+   - Complex logic to determine if user is reading older logs
+   - **Issue**: Still had edge cases causing jumps
+
+4. **Final Solution**: Reversed log order (newest at top) ✅
+   - Split logs by newline, reverse array, rebuild string
+   - Newest logs always appear at top (default scroll position)
+   - Eliminated ALL scrolling logic complexity
+   - Removed scroll listeners and position tracking
+   - Simple and reliable solution
+
+**Implementation Details:**
+
+- **New Files:**
+  - `LogViewerActivity.java` - Full-screen log viewer activity
+  - `activity_log_viewer.xml` - Layout with header buttons and scrollable log text
+
+- **Key Features:**
+  1. ✅ Full-screen activity (replaces modal dialog)
+  2. ✅ Pause/resume button (yellow when paused, green when running)
+  3. ✅ Auto-refresh every 1 second when not paused
+  4. ✅ Reversed log order (newest at top)
+  5. ✅ Clear logs button
+  6. ✅ Refresh logs button (force immediate update)
+  7. ✅ Save logs to USB button
+  8. ✅ Close button returns to launcher
+  9. ✅ Only updates TextView when content actually changes
+
+- **Log Reversal Code:**
+
+  ```java
+  // Split logs into lines, reverse order, rebuild
+  String[] lines = logText.split("\n");
+  StringBuilder reversed = new StringBuilder();
+  for (int i = lines.length - 1; i >= 0; i--) {
+      reversed.append(lines[i]).append("\n");
+  }
+  String reversedLog = reversed.toString();
+  ```
+
+- **Activation:** Triple-tap the clock widget in main launcher
+
+- **Log Filters:** Shows only relevant logs:
+  - `CustomLauncher:V` - Main launcher logs
+  - `VehicleDataService:V` - Vehicle service binding logs
+  - `HeatingControlService:V` - Heating control service logs
+  - `MediaListenerService:V` - Media service logs
+  - `AndroidRuntime:E` - Critical errors
+
+**Testing:**
+
+- ✅ Activity opens smoothly from triple-tap
+- ✅ No scroll jumping issues (logs stay stable)
+- ✅ Pause/resume button works correctly
+- ✅ Color feedback (yellow/green) is clear
+- ✅ Clear button wipes logs as expected
+- ✅ Save to USB searches multiple mount points
+- ✅ Close button properly stops log reader and cleans up
+
+**Lessons Learned:**
+
+Sometimes the simplest solution (reversing order) is better than complex scroll tracking logic. By putting newest logs at top, we eliminated the need for any scroll management code entirely.
 
 ## Resources
 

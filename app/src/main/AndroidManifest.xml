@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.custom.launcher">
+    package="com.custom.launcher"
+    android:sharedUserId="android.uid.system">
+
+    <!-- System UID grants access to protected APIs for ADB/USB control -->
 
     <!-- Permissions -->
     <uses-permission android:name="android.permission.INTERNET" />
@@ -19,9 +22,15 @@
     <!-- For Android 13+: granular media access -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <!-- System permissions for ADB/USB control -->
+    <uses-permission android:name="android.permission.WRITE_SETTINGS" />
+    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.CONNECTIVITY_INTERNAL" />
 
     <application
         android:allowBackup="true"
+        android:debuggable="true"
         android:icon="@drawable/ic_launcher"
         android:label="Custom Launcher"
         android:theme="@style/AppTheme"
@@ -46,6 +55,18 @@
         <!-- USB Debug Activity -->
         <activity
             android:name=".UsbDebugActivity"
+            android:exported="false"
+            android:theme="@style/AppTheme" />
+
+        <!-- Shell Command Activity -->
+        <activity
+            android:name=".ShellActivity"
+            android:exported="false"
+            android:theme="@style/AppTheme" />
+
+        <!-- Log Viewer Activity -->
+        <activity
+            android:name=".LogViewerActivity"
             android:exported="false"
             android:theme="@style/AppTheme" />
 

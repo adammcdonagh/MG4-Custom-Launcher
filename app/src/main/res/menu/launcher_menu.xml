@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/menu_shell"
+        android:title="Shell Command Interface" />
+    <item
+        android:id="@+id/menu_usb_debug"
+        android:title="USB Debug Screen" />
+    <item
+        android:id="@+id/menu_log_viewer"
+        android:title="Log Viewer" />
+</menu>
