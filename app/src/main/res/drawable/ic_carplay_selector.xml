@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Disabled state (not connected) - All Grey -->
+    <item android:state_enabled="false">
+        <vector xmlns:android="http://schemas.android.com/apk/res/android"
+            android:width="48dp"
+            android:height="48dp"
+            android:viewportWidth="48"
+            android:viewportHeight="48">
+
+            <!-- Rounded square background - light grey -->
+            <path
+                android:fillColor="#CCCCCC"
+                android:pathData="M12,4 L36,4 Q44,4 44,12 L44,36 Q44,44 36,44 L12,44 Q4,44 4,36 L4,12 Q4,4 12,4 Z" />
+
+            <!-- Circular "C" shape - grey stroke circle with gap on right (larger radius) -->
+            <path
+                android:strokeColor="#666666"
+                android:strokeWidth="3"
+                android:fillColor="@android:color/transparent"
+                android:pathData="M35,18 A13,13 0 1,0 35,30" />
+
+            <!-- Play triangle in center - grey -->
+            <path
+                android:fillColor="#666666"
+                android:pathData="M22,19 L22,29 L30,24 Z" />
+        </vector>
+    </item>
+
+    <!-- Pressed state -->
+    <item android:state_pressed="true">
+        <vector xmlns:android="http://schemas.android.com/apk/res/android"
+            android:width="48dp"
+            android:height="48dp"
+            android:viewportWidth="48"
+            android:viewportHeight="48"
+            android:alpha="0.8">
+
+            <!-- Rounded square background - white -->
+            <path
+                android:fillColor="#FFFFFF"
+                android:pathData="M12,4 L36,4 Q44,4 44,12 L44,36 Q44,44 36,44 L12,44 Q4,44 4,36 L4,12 Q4,4 12,4 Z" />
+
+            <!-- Circular "C" shape - green stroke circle with gap on right (larger radius) -->
+            <path
+                android:strokeColor="#4CAF50"
+                android:strokeWidth="3"
+                android:fillColor="@android:color/transparent"
+                android:pathData="M35,18 A13,13 0 1,0 35,30" />
+
+            <!-- Play triangle in center - green -->
+            <path
+                android:fillColor="#4CAF50"
+                android:pathData="M22,19 L22,29 L30,24 Z" />
+        </vector>
+    </item>
+
+    <!-- Normal state (connected) - White with green accents -->
+    <item>
+        <vector xmlns:android="http://schemas.android.com/apk/res/android"
+            android:width="48dp"
+            android:height="48dp"
+            android:viewportWidth="48"
+            android:viewportHeight="48">
+
+            <!-- Rounded square background - white -->
+            <path
+                android:fillColor="#FFFFFF"
+                android:pathData="M12,4 L36,4 Q44,4 44,12 L44,36 Q44,44 36,44 L12,44 Q4,44 4,36 L4,12 Q4,4 12,4 Z" />
+
+            <!-- Circular "C" shape - green stroke circle with gap on right (larger radius) -->
+            <path
+                android:strokeColor="#4CAF50"
+                android:strokeWidth="3"
+                android:fillColor="@android:color/transparent"
+                android:pathData="M35,18 A13,13 0 1,0 35,30" />
+
+            <!-- Play triangle in center - green -->
+            <path
+                android:fillColor="#4CAF50"
+                android:pathData="M22,19 L22,29 L30,24 Z" />
+        </vector>
+    </item>
+</selector>

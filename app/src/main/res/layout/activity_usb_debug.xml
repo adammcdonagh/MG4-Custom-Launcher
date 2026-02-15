@@ -145,6 +145,15 @@
                         android:textColor="#FFFFFF"
                         android:background="#555555" />
                 </LinearLayout>
+
+                <Button
+                    android:id="@+id/btnEnableV4Proxy"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="Enable IPv4 Proxy (35555)"
+                    android:textColor="#FFFFFF"
+                    android:background="#0066CC" />
             </LinearLayout>
         </ScrollView>
 

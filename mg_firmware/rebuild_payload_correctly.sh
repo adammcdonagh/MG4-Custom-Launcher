@@ -123,17 +123,18 @@ echo "    - Creating backup of arp_update.sh..."
 sudo cp system_mount/system/bin/arp_update.sh system_mount/system/bin/arp_update.sh.original
 
 # Modify the arp_update.sh script - comment out firewall rules
-echo "    - Modifying arp_update.sh (commenting out 8 firewall rules)..."
+echo "    - Modifying arp_update.sh (commenting out 24 firewall rules)..."
 sudo sed -i '1,45 s/^iptables/# iptables/' system_mount/system/bin/arp_update.sh  # Comment out all ipv4 rules
 sudo sed -i '1,45 s/^ip6tables/# ip6tables/' system_mount/system/bin/arp_update.sh  # Comment out all ipv6 rules
 
 # Verify modifications
 echo "    - Verifying modifications..."
 modified_lines=$(sudo grep -e "^# iptables" -e "^# ip6tables" system_mount/system/bin/arp_update.sh | wc -l)
-if [ $modified_lines -ge 8 ]; then
+if [ $modified_lines -ge 24 ]; then
     echo "    ✅ Successfully commented out $modified_lines iptables lines"
 else
-    echo "    ⚠️  Only $modified_lines lines commented (expected 8+)"
+    echo "    ❌ ERROR: Only $modified_lines lines commented (expected 24+)"
+    exit 1
 fi
 
 # Unmount
@@ -320,8 +321,6 @@ echo "Output files:"
 echo "  - Payload: ~/aosp/ota_build_v2/payload.bin ($payload_size)"
 echo ""
 echo "Next steps:"
-echo "  1. Copy payload.bin to Mac for OTA packaging:"
-echo "     scp adam@192.168.13.145:~/aosp/ota_build_v2/payload.bin ~/Downloads/"
-echo "  2. On Mac, copy to ota workspace and run final_ota_with_checksoc.sh"
-echo "  3. Install on car via USB stick"
+echo "  1. Run final_ota_with_checksoc.sh"
+echo "  2. Install final OTA zip package on car via USB stick"
 echo ""

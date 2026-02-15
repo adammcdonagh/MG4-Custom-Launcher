@@ -488,13 +488,16 @@
                 android:padding="8dp">
 
                 <ImageView
+                    android:id="@+id/carPlayIcon"
                     android:layout_width="48dp"
                     android:layout_height="48dp"
-                    android:src="@drawable/ic_carplay"
+                    android:src="@drawable/ic_carplay_selector"
                     android:scaleType="fitCenter"
-                    android:layout_marginBottom="4dp" />
+                    android:layout_marginBottom="4dp"
+                    android:enabled="false" />
 
                 <TextView
+                    android:id="@+id/carPlayText"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="CarPlay"
@@ -534,6 +537,42 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="Climate"
+                    android:textColor="@color/text_primary"
+                    android:textSize="12sp"
+                    android:fontFamily="sans-serif-medium" />
+
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="#30FFFFFF"
+                android:layout_marginVertical="8dp" />
+
+            <!-- Settings Button -->
+            <LinearLayout
+                android:id="@+id/settingsButton"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:clickable="true"
+                android:focusable="true"
+                android:background="?attr/selectableItemBackground"
+                android:padding="8dp">
+
+                <ImageView
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:src="@drawable/ic_settings"
+                    android:scaleType="fitCenter"
+                    android:layout_marginBottom="4dp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Settings"
                     android:textColor="@color/text_primary"
                     android:textSize="12sp"
                     android:fontFamily="sans-serif-medium" />

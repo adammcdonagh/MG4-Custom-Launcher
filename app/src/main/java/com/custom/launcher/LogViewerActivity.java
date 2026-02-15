@@ -1,9 +1,13 @@
 package com.custom.launcher;
 
 import android.content.Intent;
+import android.graphics.Color;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.text.Spannable;
+import android.text.SpannableString;
+import android.text.style.ForegroundColorSpan;
 import android.util.Log;
 import android.widget.Button;
 import android.widget.ScrollView;
@@ -137,16 +141,9 @@ public class LogViewerActivity extends AppCompatActivity {
                         logcatProcess.destroy();
                     }
 
-                    // Get all logs, filter for our app's process ID
-                    // First get our PID, then filter logs by that PID
+                    // Get ALL system logs (last 200 lines)
                     String[] command = {
-                            "sh", "-c",
-                            "MY_PID=$(ps | grep com.custom.launcher | grep -v grep | awk '{print $2}' | head -1); " +
-                                    "if [ -n \"$MY_PID\" ]; then " +
-                                    "  logcat -d -v time | grep \" $MY_PID \" | tail -100; " +
-                                    "else " +
-                                    "  echo 'App process not found'; " +
-                                    "fi"
+                            "logcat", "-d", "-v", "time", "-t", "200"
                     };
                     logcatProcess = Runtime.getRuntime().exec(command);
 
@@ -163,7 +160,7 @@ public class LogViewerActivity extends AppCompatActivity {
 
                     // Reverse the log order so newest appears at top
                     final String newContent;
-                    if (!logContent.isEmpty() && !logContent.contains("App process not found")) {
+                    if (!logContent.isEmpty()) {
                         String[] lines = logContent.split("\n");
                         StringBuilder reversed = new StringBuilder();
                         for (int i = lines.length - 1; i >= 0; i--) {
@@ -171,15 +168,91 @@ public class LogViewerActivity extends AppCompatActivity {
                         }
                         newContent = reversed.toString();
                     } else {
-                        newContent = "No logs found for com.custom.launcher\n\nMake sure the app is running and generating logs.";
+                        newContent = "No logs found\n";
                     }
 
                     // Only update UI if content actually changed and not paused
                     if (!isPaused && !newContent.equals(lastLogContent)) {
                         lastLogContent = newContent;
                         runOnUiThread(() -> {
-                            // Update text - newest logs now at top, no scrolling needed
-                            logText.setText(newContent);
+                            // Highlight custom launcher logs in red, saicmotor logs in orange
+                            SpannableString spannableText = new SpannableString(newContent);
+
+                            // All classes from com.custom.launcher package (logs show class name only)
+                            String[] customClassNames = {
+                                    "custom.launcher",
+                                    "CustomLauncher",
+                                    "MainActivity",
+                                    "LogViewerActivity",
+                                    "UsbDebugActivity",
+                                    "VehicleDataService",
+                                    "HeatingControlService",
+                                    "MediaListenerService",
+                                    "CarPlayService",
+                                    "SaicMediaService"
+                            };
+
+                            // SAIC SDK classes
+                            String[] saicClassNames = {
+                                    "PageManager",
+                                    "BaseManager",
+                                    "VehicleChargingManager",
+                                    "AirConditionManager",
+                                    "LogUtil",
+                                    "VehicleServiceContract",
+                                    "IVehicleControlService",
+                                    "IVehicleControlListener",
+                                    "IVehicleSettingListener",
+                                    "IVehicleConditionListener",
+                                    "IScreenManagerService",
+                                    "IScreenStateListener",
+                                    "IPageService"
+                            };
+
+                            String[] logLines = newContent.split("\n");
+                            int currentPos = 0;
+
+                            for (String logLine : logLines) {
+                                // Check for custom launcher classes (red)
+                                boolean isCustomClass = false;
+                                for (String className : customClassNames) {
+                                    if (logLine.contains(className)) {
+                                        isCustomClass = true;
+                                        break;
+                                    }
+                                }
+
+                                // Check for SAIC classes (orange)
+                                boolean isSaicClass = false;
+                                if (!isCustomClass) {
+                                    for (String className : saicClassNames) {
+                                        if (logLine.contains(className)) {
+                                            isSaicClass = true;
+                                            break;
+                                        }
+                                    }
+                                }
+
+                                if (isCustomClass) {
+                                    int lineLength = logLine.length() + 1; // +1 for newline
+                                    spannableText.setSpan(
+                                            new ForegroundColorSpan(Color.RED),
+                                            currentPos,
+                                            currentPos + lineLength - 1,
+                                            Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+                                } else if (isSaicClass) {
+                                    int lineLength = logLine.length() + 1; // +1 for newline
+                                    spannableText.setSpan(
+                                            new ForegroundColorSpan(0xFFFF8C00), // Orange color
+                                            currentPos,
+                                            currentPos + lineLength - 1,
+                                            Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+                                }
+
+                                currentPos += logLine.length() + 1;
+                            }
+
+                            logText.setText(spannableText);
                         });
                     } else if (isPaused && !newContent.equals(lastLogContent)) {
                         // Update cache while paused, but don't update UI

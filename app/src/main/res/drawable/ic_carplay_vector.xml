@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+
+    <!-- Rounded square background -->
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M12,4 L36,4 Q44,4 44,12 L44,36 Q44,44 36,44 L12,44 Q4,44 4,36 L4,12 Q4,4 12,4 Z" />
+
+    <!-- "C" shape around center -->
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="@android:color/white"
+        android:strokeWidth="3"
+        android:pathData="M32,14 Q36,14 36,18 L36,30 Q36,34 32,34 M16,34 Q12,34 12,30 L12,18 Q12,14 16,14" />
+
+    <!-- Play triangle in center -->
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M20,17 L20,31 L32,24 Z" />
+</vector>

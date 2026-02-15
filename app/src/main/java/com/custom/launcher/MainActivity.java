@@ -27,6 +27,8 @@ import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.cardview.widget.CardView;
+import com.custom.launcher.service.CarPlayService;
+import com.custom.launcher.service.CarPlayService;
 import com.custom.launcher.service.HeatingControlService;
 import com.custom.launcher.service.MediaListenerService;
 import com.custom.launcher.service.VehicleDataService;
@@ -45,6 +47,7 @@ public class MainActivity extends AppCompatActivity {
     private TextView totalTime;
     private ImageButton playPauseButton;
     private ImageView albumArt;
+    private ImageView albumArtBlurred;
     private CardView batteryCard;
     private View batteryFill;
     private android.widget.SeekBar progressBar;
@@ -54,6 +57,10 @@ public class MainActivity extends AppCompatActivity {
     private ImageView rightSeatIcon;
     private ImageView wheelIcon;
 
+    // CarPlay icon views
+    private ImageView carPlayIcon;
+    private TextView carPlayText;
+
     // Heating control states (0 = off, 1-3 = heat levels)
     private int leftSeatLevel = 0;
     private int rightSeatLevel = 0;
@@ -61,6 +68,7 @@ public class MainActivity extends AppCompatActivity {
 
     private VehicleDataService vehicleDataService;
     private HeatingControlService heatingControlService;
+    private CarPlayService carPlayService;
     private Handler timeHandler;
     private Runnable timeRunnable;
     private Handler progressHandler;
@@ -227,6 +235,7 @@ public class MainActivity extends AppCompatActivity {
         totalTime = findViewById(R.id.totalTime);
         playPauseButton = findViewById(R.id.playPauseButton);
         albumArt = findViewById(R.id.albumArt);
+        albumArtBlurred = findViewById(R.id.albumArtBlurred);
         batteryCard = findViewById(R.id.batteryCard);
         batteryFill = findViewById(R.id.batteryFill);
 
@@ -234,6 +243,16 @@ public class MainActivity extends AppCompatActivity {
         leftSeatIcon = findViewById(R.id.leftSeatIcon);
         rightSeatIcon = findViewById(R.id.rightSeatIcon);
         wheelIcon = findViewById(R.id.wheelIcon);
+
+        // CarPlay icon
+        carPlayIcon = findViewById(R.id.carPlayIcon);
+        carPlayText = findViewById(R.id.carPlayText);
+
+        // Ensure CarPlay starts in disabled state
+        if (carPlayIcon != null) {
+            carPlayIcon.setEnabled(false);
+            Log.d(TAG, "CarPlay icon initialized as DISABLED");
+        }
 
         // Setup heating control click listeners (only if views exist)
         View leftSeatButton = findViewById(R.id.leftSeatButton);
@@ -301,6 +320,11 @@ public class MainActivity extends AppCompatActivity {
             openHVAC();
         });
 
+        findViewById(R.id.settingsButton).setOnClickListener(v -> {
+            Log.i(TAG, "Settings button clicked!");
+            openSettings();
+        });
+
         findViewById(R.id.launcherButton).setOnClickListener(v -> {
             Log.i(TAG, "Launcher button clicked!");
             openOriginalLauncher();
@@ -324,23 +348,28 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void openCarPlay() {
-        try {
-            Log.i(TAG, "Attempting to open CarPlay...");
-            // Try to launch CarPlay service/app
-            Intent intent = getPackageManager().getLaunchIntentForPackage("com.allgo.carplay.service");
-            if (intent != null) {
-                intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                startActivity(intent);
-                Log.i(TAG, "✓ Successfully launched CarPlay");
-            } else {
-                // Fallback: try broadcast intent
-                Intent broadcastIntent = new Intent("com.allgo.carplay");
-                sendBroadcast(broadcastIntent);
-                Log.i(TAG, "Sent CarPlay broadcast intent");
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "✗ Failed to open CarPlay (expected on emulator): " + e.getMessage());
-            Log.i(TAG, "This will work on the actual MG4 car where CarPlay is installed");
+        if (carPlayService != null && carPlayService.isCarPlayConnected()) {
+            Log.i(TAG, "Launching CarPlay via service...");
+            carPlayService.launchCarPlay();
+        } else {
+            Log.w(TAG, "CarPlay not connected");
+            Toast.makeText(this, "CarPlay not connected. Please connect your iPhone.", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    /**
+     * Update CarPlay icon state based on connection
+     */
+    private void updateCarPlayIcon(boolean isConnected) {
+        Log.i(TAG, "Updating CarPlay icon: " + (isConnected ? "CONNECTED" : "DISCONNECTED"));
+
+        if (carPlayIcon != null) {
+            carPlayIcon.setEnabled(isConnected);
+            carPlayIcon.setAlpha(isConnected ? 1.0f : 0.5f);
+        }
+
+        if (carPlayText != null) {
+            carPlayText.setAlpha(isConnected ? 1.0f : 0.5f);
         }
     }
 
@@ -357,6 +386,18 @@ public class MainActivity extends AppCompatActivity {
         } catch (Exception e) {
             Log.e(TAG, "✗ Failed to open HVAC app: " + e.getMessage());
             Log.i(TAG, "This will work on the actual MG4 car where the HVAC app is installed");
+        }
+    }
+
+    private void openSettings() {
+        try {
+            Log.i(TAG, "Opening Android Settings...");
+            Intent intent = new Intent(Settings.ACTION_SETTINGS);
+            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(intent);
+            Log.i(TAG, "✓ Successfully launched Settings");
+        } catch (Exception e) {
+            Log.e(TAG, "✗ Failed to open Settings: " + e.getMessage());
         }
     }
 
@@ -624,6 +665,21 @@ public class MainActivity extends AppCompatActivity {
         });
 
         heatingControlService.bind();
+
+        // Initialize CarPlay service
+        carPlayService = new CarPlayService(this);
+        carPlayService.setConnectionListener(new CarPlayService.ConnectionListener() {
+            @Override
+            public void onCarPlayConnectionChanged(boolean isConnected) {
+                runOnUiThread(() -> updateCarPlayIcon(isConnected));
+            }
+
+            @Override
+            public void onAndroidAutoConnectionChanged(boolean isConnected) {
+                Log.i(TAG, "Android Auto connection: " + isConnected);
+            }
+        });
+        carPlayService.bind();
     }
 
     private void startRetryLoop() {
@@ -640,6 +696,49 @@ public class MainActivity extends AppCompatActivity {
     // scheduleVehicleServiceRetry() is now replaced by
     // startRetryLoop()/stopRetryLoop()
 
+    /**
+     * Creates a desaturation color filter
+     * 
+     * @param saturation 0.0 = grayscale, 1.0 = original colors
+     */
+    private android.graphics.ColorMatrixColorFilter createDesaturateFilter(float saturation) {
+        android.graphics.ColorMatrix colorMatrix = new android.graphics.ColorMatrix();
+        colorMatrix.setSaturation(saturation);
+        return new android.graphics.ColorMatrixColorFilter(colorMatrix);
+    }
+
+    /**
+     * Creates a blurred bitmap from the source bitmap
+     */
+    private android.graphics.Bitmap createBlurredBitmap(android.graphics.Bitmap source) {
+        try {
+            // Create a smaller bitmap for better performance
+            int width = Math.round(source.getWidth() * 0.25f);
+            int height = Math.round(source.getHeight() * 0.25f);
+            android.graphics.Bitmap scaledBitmap = android.graphics.Bitmap.createScaledBitmap(
+                    source, width, height, true);
+
+            // Apply RenderScript blur
+            android.renderscript.RenderScript rs = android.renderscript.RenderScript.create(this);
+            android.renderscript.Allocation input = android.renderscript.Allocation.createFromBitmap(
+                    rs, scaledBitmap);
+            android.renderscript.Allocation output = android.renderscript.Allocation.createTyped(
+                    rs, input.getType());
+            android.renderscript.ScriptIntrinsicBlur script = android.renderscript.ScriptIntrinsicBlur.create(
+                    rs, android.renderscript.Element.U8_4(rs));
+            script.setRadius(25f); // Max blur radius
+            script.setInput(input);
+            script.forEach(output);
+            output.copyTo(scaledBitmap);
+
+            rs.destroy();
+            return scaledBitmap;
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to create blurred bitmap: " + e.getMessage());
+            return source; // Return original on error
+        }
+    }
+
     private void setupMediaService() {
         MediaListenerService.setListener((title, artist, isPlaying, albumArtBitmap) -> {
             runOnUiThread(() -> {
@@ -653,11 +752,21 @@ public class MainActivity extends AppCompatActivity {
                 updatePlayPauseButton();
                 updateMediaProgress();
 
-                // Update album art
+                // Update album art with blur background and desaturated foreground
                 if (albumArtBitmap != null) {
+                    // Set blurred background (stretched to fill)
+                    android.graphics.Bitmap blurredBitmap = createBlurredBitmap(albumArtBitmap);
+                    albumArtBlurred.setImageBitmap(blurredBitmap);
+                    albumArtBlurred.setColorFilter(createDesaturateFilter(0.5f)); // More desaturated
+
+                    // Set foreground album art (fit properly) with more vibrant colors
                     albumArt.setImageBitmap(albumArtBitmap);
+                    albumArt.setColorFilter(createDesaturateFilter(0.95f)); // More saturated/vibrant
                 } else {
-                    albumArt.setImageResource(R.drawable.ic_launcher);
+                    albumArtBlurred.setImageDrawable(null);
+                    albumArtBlurred.setColorFilter(null);
+                    albumArt.setImageDrawable(null);
+                    albumArt.setColorFilter(null);
                 }
             });
         });
@@ -843,6 +952,9 @@ public class MainActivity extends AppCompatActivity {
 
                 if (duration > 0 && position >= 0) {
                     // We have a duration - show actual progress and remaining time
+                    progressBar.setVisibility(View.VISIBLE);
+                    currentTime.setVisibility(View.VISIBLE);
+                    totalTime.setVisibility(View.VISIBLE);
                     int progress = (int) ((position * 100) / duration);
                     progressBar.setProgress(Math.min(100, Math.max(0, progress)));
 
@@ -850,21 +962,33 @@ public class MainActivity extends AppCompatActivity {
                     long remaining = Math.max(0, duration - position);
                     totalTime.setText("-" + formatTime(remaining));
                 } else if (duration <= 0) {
-                    // No duration (live stream/radio) - show "Live"
+                    // No duration (live stream/radio) - hide seekbar and time labels
                     progressBar.setProgress(position > 0 ? 50 : 0);
                     totalTime.setText("Live");
+                    progressBar.setVisibility(View.GONE);
+                    currentTime.setVisibility(View.GONE);
+                    totalTime.setVisibility(View.GONE);
                 } else {
                     // Position not available yet, show placeholder
+                    progressBar.setVisibility(View.VISIBLE);
+                    currentTime.setVisibility(View.VISIBLE);
+                    totalTime.setVisibility(View.VISIBLE);
                     progressBar.setProgress(0);
                     totalTime.setText("-0:00");
                 }
             } else {
                 // Reset to defaults
+                progressBar.setVisibility(View.VISIBLE);
+                currentTime.setVisibility(View.VISIBLE);
+                totalTime.setVisibility(View.VISIBLE);
                 progressBar.setProgress(0);
                 currentTime.setText("0:00");
                 totalTime.setText("-0:00");
             }
         } else {
+            progressBar.setVisibility(View.VISIBLE);
+            currentTime.setVisibility(View.VISIBLE);
+            totalTime.setVisibility(View.VISIBLE);
             progressBar.setProgress(0);
             currentTime.setText("0:00");
             totalTime.setText("-0:00");
@@ -888,6 +1012,11 @@ public class MainActivity extends AppCompatActivity {
 
         if (heatingControlService != null) {
             heatingControlService.release();
+        }
+
+        if (carPlayService != null) {
+            carPlayService.unbind();
+            carPlayService = null;
         }
 
         if (timeHandler != null) {

@@ -23,6 +23,7 @@ public class ShellActivity extends AppCompatActivity {
     private EditText commandInput;
     private TextView outputText;
     private Button executeButton;
+    private Button hideKeyboardButton;
     private Button clearButton;
     private Button closeButton;
     private Handler mainHandler;
@@ -38,6 +39,7 @@ public class ShellActivity extends AppCompatActivity {
         commandInput = findViewById(R.id.commandInput);
         outputText = findViewById(R.id.outputText);
         executeButton = findViewById(R.id.executeButton);
+        hideKeyboardButton = findViewById(R.id.hideKeyboardButton);
         clearButton = findViewById(R.id.clearButton);
         closeButton = findViewById(R.id.closeButton);
 
@@ -46,6 +48,7 @@ public class ShellActivity extends AppCompatActivity {
 
         // Setup button listeners
         executeButton.setOnClickListener(v -> executeCommand());
+        hideKeyboardButton.setOnClickListener(v -> hideKeyboard());
         clearButton.setOnClickListener(v -> clearOutput());
         closeButton.setOnClickListener(v -> finish());
 
@@ -153,6 +156,23 @@ public class ShellActivity extends AppCompatActivity {
     private void clearOutput() {
         outputText.setText("");
         appendOutput("Output cleared.\n\n");
+    }
+
+    private void hideKeyboard() {
+        try {
+            android.view.inputmethod.InputMethodManager imm = (android.view.inputmethod.InputMethodManager) getSystemService(
+                    INPUT_METHOD_SERVICE);
+            View focus = getCurrentFocus();
+            if (focus == null) {
+                focus = commandInput;
+            }
+            if (imm != null && focus != null) {
+                imm.hideSoftInputFromWindow(focus.getWindowToken(), 0);
+                focus.clearFocus();
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to hide keyboard", e);
+        }
     }
 
     @Override

@@ -30,7 +30,8 @@ public class PageManager {
     private HandlerThread mRebindHandlerThread;
     private boolean mServiceBound;
     private boolean mServiceConnected;
-    private final ServiceConnection mServiceConnection = new ServiceConnection() { // from class: com.saicmotor.sdk.vehiclesettings.manager.PageManager.1
+    private final ServiceConnection mServiceConnection = new ServiceConnection() { // from class:
+                                                                                   // com.saicmotor.sdk.vehiclesettings.manager.PageManager.1
         @Override // android.content.ServiceConnection
         public void onServiceConnected(ComponentName name, IBinder service) {
             LogUtil.logE(PageManager.TAG, "onServiceConnected: service is connected!");

@@ -1,6 +1,8 @@
 package com.custom.launcher;
 
 import android.app.Activity;
+import android.content.Intent;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -14,6 +16,7 @@ import android.widget.TableRow;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.cardview.widget.CardView;
+import com.custom.launcher.service.AdbV4ProxyService;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
@@ -35,6 +38,7 @@ public class UsbDebugActivity extends Activity {
     private TextView adbStatusText;
     private Button btnEnableAdb;
     private Button btnRefreshAdb;
+    private Button btnEnableV4Proxy;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -51,6 +55,7 @@ public class UsbDebugActivity extends Activity {
         adbStatusText = findViewById(R.id.adbStatusText);
         btnEnableAdb = findViewById(R.id.btnEnableAdb);
         btnRefreshAdb = findViewById(R.id.btnRefreshAdb);
+        btnEnableV4Proxy = findViewById(R.id.btnEnableV4Proxy);
 
         backButton.setOnClickListener(v -> finish());
 
@@ -61,6 +66,7 @@ public class UsbDebugActivity extends Activity {
         // ADB tab buttons
         btnEnableAdb.setOnClickListener(v -> attemptEnableAdb());
         btnRefreshAdb.setOnClickListener(v -> updateAdbDiagnostics());
+        btnEnableV4Proxy.setOnClickListener(v -> startAdbV4ProxyService());
 
         // Initial load
         loadDebugInfo();
@@ -394,6 +400,27 @@ public class UsbDebugActivity extends Activity {
                 String adbdService = getSystemProperty("init.svc.adbd");
                 diag.append("adbd Service: ").append(adbdService).append("\n\n");
 
+                diag.append("=== IPV4 PROXY SERVICE ===\n");
+                boolean proxyRunning = AdbV4ProxyService.isProxyRunning();
+                diag.append("Service Running: ").append(proxyRunning ? "YES" : "NO").append("\n");
+                diag.append("Bound Address: ").append(AdbV4ProxyService.getBoundAddress()).append("\n");
+                diag.append("IPv4 Listen Port: ").append(AdbV4ProxyService.LISTEN_PORT_V4).append("\n");
+                diag.append("Target (IPv6): ::1:").append(AdbV4ProxyService.TARGET_PORT_V6).append("\n");
+                diag.append("Accepted Clients: ").append(AdbV4ProxyService.getAcceptedClients()).append("\n");
+                diag.append("Active Bridges: ").append(AdbV4ProxyService.getActiveBridges()).append("\n");
+                diag.append("Target Failures: ").append(AdbV4ProxyService.getTargetConnectFailures()).append("\n");
+                diag.append("Last Status: ").append(AdbV4ProxyService.getLastStatus()).append("\n");
+                String lastErr = AdbV4ProxyService.getLastError();
+                if (lastErr != null && !lastErr.isEmpty()) {
+                    diag.append("Last Error: ").append(lastErr).append("\n");
+                }
+                if (proxyRunning) {
+                    diag.append("Connect command: adb connect <car-ip>:")
+                            .append(AdbV4ProxyService.LISTEN_PORT_V4)
+                            .append("\n");
+                }
+                diag.append("\n");
+
                 // Check SELinux status
                 diag.append("=== SELINUX STATUS ===\n");
                 String selinux = getSystemProperty("ro.build.selinux");
@@ -432,6 +459,16 @@ public class UsbDebugActivity extends Activity {
                             } else {
                                 btnEnableAdb.setText("Enable ADB");
                                 btnEnableAdb.setEnabled(true);
+                            }
+                        }
+
+                        if (btnEnableV4Proxy != null) {
+                            if (AdbV4ProxyService.isProxyRunning()) {
+                                btnEnableV4Proxy.setText("IPv4 Proxy Active (35555)");
+                                btnEnableV4Proxy.setEnabled(false);
+                            } else {
+                                btnEnableV4Proxy.setText("Enable IPv4 Proxy (35555)");
+                                btnEnableV4Proxy.setEnabled(true);
                             }
                         }
                     }
@@ -579,5 +616,26 @@ public class UsbDebugActivity extends Activity {
         Method set = systemProperties.getMethod("set", String.class, String.class);
         set.invoke(null, key, value);
         Log.i(TAG, "Set system property: " + key + " = " + value);
+    }
+
+    private void startAdbV4ProxyService() {
+        try {
+            Intent serviceIntent = new Intent(this, AdbV4ProxyService.class);
+            serviceIntent.setAction(AdbV4ProxyService.ACTION_START);
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(serviceIntent);
+            } else {
+                startService(serviceIntent);
+            }
+
+            Toast.makeText(this,
+                    "IPv4 proxy starting on port " + AdbV4ProxyService.LISTEN_PORT_V4,
+                    Toast.LENGTH_SHORT).show();
+            updateAdbDiagnostics();
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to start IPv4 proxy service", e);
+            Toast.makeText(this, "Failed to start IPv4 proxy: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
     }
 }
